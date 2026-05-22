@@ -1,24 +1,22 @@
 import hashlib
 import secrets
-from datetime import datetime, timezone
 from typing import Optional
 
+import bcrypt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from passlib.context import CryptContext
 
 from app.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _signer = URLSafeTimedSerializer(settings.SECRET_KEY, salt="session")
 _qr_signer = URLSafeTimedSerializer(settings.SECRET_KEY, salt="qr-token")
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(rounds=12)).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 def hash_api_key(key: str) -> str:

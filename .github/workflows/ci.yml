@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install ruff
+      - run: ruff check app/
+
+  typecheck:
+    name: Type-Check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - run: mypy app/ --ignore-missing-imports
+
+  test:
+    name: Tests (pytest + MariaDB)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: einsatzleiter_test
+          MARIADB_USER: einsatzleiter
+          MARIADB_PASSWORD: testpass
+        ports:
+          - 3306:3306
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          sudo apt-get install -y libmariadb-dev libpango-1.0-0 libpangoft2-1.0-0
+          pip install -e ".[dev]"
+      - env:
+          DATABASE_URL: mysql+pymysql://einsatzleiter:testpass@127.0.0.1:3306/einsatzleiter_test
+          SECRET_KEY: test-secret-key
+        run: |
+          alembic upgrade head
+          python -m app.seed_data
+          pytest tests/ -v

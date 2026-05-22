@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}AS-Überwachung – Einsatz #{{ incident.id }}{% endblock %}
+{% block content %}
+{% if incident.is_exercise %}<div class="exercise-topbar">⚠ ÜBUNG / SIMULATION ⚠</div>{% endif %}
+<div class="page-header">
+  <a href="/einsatz/{{ incident.id }}" class="btn btn--ghost">← Board</a>
+  <h2>Atemschutzüberwachung – {{ incident.alarm_type_code }} #{{ incident.id }}</h2>
+  {% if can_edit is not defined or can_edit %}
+  <button class="btn btn--primary" onclick="document.getElementById('newTroopModal').showModal()">+ Trupp anlegen</button>
+  {% endif %}
+</div>
+
+<!-- Active Troops -->
+<div class="troops-grid" id="troopsGrid">
+  {% for troop, warning in troops_with_warnings %}
+  <div class="troop-card troop-card--{{ troop.status }} troop-card--warn-{{ warning }}"
+       id="troop-{{ troop.id }}">
+    <div class="troop-card__header">
+      <span class="troop-card__name">{{ troop.name }}</span>
+      <span class="troop-card__status-pill status-pill--{{ troop.status }}">
+        {{ {'bereit':'Bereit','im_einsatz':'Im Einsatz','rueckzug':'Rückzug!','zurueck':'Zurück','erholt':'Erholt'}[troop.status] }}
+      </span>
+      {% if warning == 'red' %}
+      <span class="troop-card__warn-badge warn-badge--red">⚠ RÜCKZUG</span>
+      {% elif warning == 'yellow' %}
+      <span class="troop-card__warn-badge warn-badge--yellow">⚠ 75%</span>
+      {% endif %}
+    </div>
+
+    {% if troop.task_text %}
+    <div class="troop-card__task">Auftrag: {{ troop.task_text }}</div>
+    {% endif %}
+
+    <!-- Timer -->
+    {% if troop.entry_at %}
+    <div class="troop-card__timer"
+         x-data="troopTimer('{{ troop.entry_at.isoformat() }}', '{{ (troop.back_at.isoformat() if troop.back_at else '') }}')"
+         x-text="display">00:00</div>
+    {% endif %}
+
+    <!-- Pressure bar -->
+    {% if troop.start_press_avg %}
+    <div class="press-bar-wrap">
+      <div class="press-bar">
+        {% set low = troop.lowest_current_pressure or troop.start_press_avg %}
+        {% set pct = [(low / troop.start_press_avg * 100)|int, 0]|max %}
+        <div class="press-bar__fill press-bar__fill--{{ warning }}" style="width: {{ pct }}%"></div>
+      </div>
+      <div class="press-bar__labels">
+        <span>{{ low|int }} bar</span>
+        <span>▼{{ troop.withdraw_press_calc|int if troop.withdraw_press_calc else '?' }} bar</span>
+        <span>{{ troop.start_press_avg|int }} bar</span>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Members -->
+    <div class="troop-members">
+      {% for m in troop.members %}
+      <div class="troop-member troop-member--{{ m.role }}">
+        <span class="troop-member__name">{{ m.display_name }}</span>
+        <span class="troop-member__role">{{ {'truppfuehrer':'TF','truppmann':'TM'}[m.role] }}</span>
+        {% if m.start_press %}<span class="troop-member__press">{{ m.start_press|int }} bar</span>{% endif %}
+        {% if m.member and m.member.is_agt %}
+        <span class="badge badge--agt">AGT</span>
+        {% elif not m.member %}
+        <span class="badge badge--warn">AGT?</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Pressure logging -->
+    <form hx-post="/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/druck" hx-swap="none" class="press-form">
+      <div class="input-row">
+        <input type="number" name="pressure_bar" class="form-input" placeholder="bar" min="0" max="400" step="5" required>
+        <button type="submit" class="btn btn--ghost btn--sm">Druck</button>
+      </div>
+    </form>
+
+    <!-- Status buttons -->
+    <div class="troop-card__actions">
+      {% if troop.status == 'bereit' %}
+      <form method="post" action="/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/starten">
+        <button type="submit" class="btn btn--primary btn--sm">▶ Einsetzen</button>
+      </form>
+      {% elif troop.status == 'im_einsatz' %}
+      <form method="post" action="/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/status">
+        <input type="hidden" name="status" value="rueckzug">
+        <button type="submit" class="btn btn--danger btn--sm">⬅ Rückzug</button>
+      </form>
+      {% elif troop.status == 'rueckzug' %}
+      <form method="post" action="/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/status">
+        <input type="hidden" name="status" value="zurueck">
+        <button type="submit" class="btn btn--warn btn--sm">✓ Zurück</button>
+      </form>
+      {% elif troop.status == 'zurueck' %}
+      <form method="post" action="/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/status">
+        <input type="hidden" name="status" value="erholt">
+        <button type="submit" class="btn btn--success btn--sm">✓ Erholt</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="text-muted">Noch keine Trupps angelegt.</p>
+  {% endfor %}
+</div>
+
+<!-- Neuer Trupp Modal -->
+<dialog class="modal modal--wide" id="newTroopModal">
+  <form method="post" action="/einsatz/{{ incident.id }}/atemschutz/trupp"
+        class="modal__content" x-data="newTroopForm()">
+    <div class="modal__header">
+      <h3>Trupp anlegen</h3>
+      <button type="button" @click="$el.closest('dialog').close()" class="modal__close">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Trupp-Bezeichnung</label>
+          <input type="text" name="name" class="form-input" placeholder="Trupp 1" required>
+        </div>
+        <div class="form-group">
+          <label>Auftrag</label>
+          <input type="text" name="task_text" class="form-input" placeholder="Innenangriff...">
+        </div>
+      </div>
+
+      <div class="troop-member-list">
+        <template x-for="(m, i) in members" :key="i">
+          <div class="troop-member-row">
+            <select :name="`member_${i}_id`" class="form-select">
+              <option value="">Freie Eingabe</option>
+              {% for member in members %}
+              <option value="{{ member.id }}">{{ member.full_name }}{% if member.is_agt %} (AGT){% endif %}</option>
+              {% endfor %}
+            </select>
+            <input :name="`member_${i}_name`" type="text" class="form-input" placeholder="oder Name">
+            <select :name="`member_${i}_role`" class="form-select form-select--xs">
+              <option value="truppfuehrer">TF</option>
+              <option value="truppmann">TM</option>
+            </select>
+            <input :name="`member_${i}_press`" type="number" class="form-input form-input--press"
+                   placeholder="bar" min="100" max="400" step="10">
+            <button type="button" @click="members.splice(i,1)" class="btn btn--icon btn--danger">×</button>
+          </div>
+        </template>
+      </div>
+      <button type="button" @click="members.push({})" class="btn btn--ghost btn--sm">+ Mitglied</button>
+    </div>
+    <div class="modal__footer">
+      <button type="button" @click="$el.closest('dialog').close()" class="btn btn--ghost">Abbrechen</button>
+      <button type="submit" class="btn btn--primary">Trupp anlegen</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function troopTimer(entryAt, backAt) {
+  return {
+    display: '00:00',
+    init() {
+      const start = new Date(entryAt);
+      const end = backAt ? new Date(backAt) : null;
+      const update = () => {
+        const now = end || new Date();
+        const sec = Math.floor((now - start) / 1000);
+        const m = Math.floor(sec / 60).toString().padStart(2,'0');
+        const s = (sec % 60).toString().padStart(2,'0');
+        this.display = m + ':' + s;
+      };
+      update();
+      if (!end) setInterval(update, 1000);
+    }
+  };
+}
+
+function newTroopForm() {
+  return { members: [{}, {}] };
+}
+</script>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}API-Keys – Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>API-Keys</h2>
+  <form method="post" action="/admin/api-keys/neu" class="inline-form">
+    <input type="text" name="label" placeholder="Bezeichnung..." class="form-input" required>
+    <button type="submit" class="btn btn--primary">+ API-Key erstellen</button>
+  </form>
+</div>
+
+{% if new_key %}
+<div class="alert alert--success">
+  <strong>Neuer API-Key (nur einmal angezeigt!):</strong><br>
+  <code class="api-key-display">{{ new_key }}</code>
+  <button onclick="navigator.clipboard.writeText('{{ new_key }}')" class="btn btn--xs btn--ghost">Kopieren</button>
+</div>
+{% endif %}
+
+<table class="table">
+  <thead><tr><th>Bezeichnung</th><th>Erstellt</th><th>Zuletzt genutzt</th><th>Ablauf</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+    {% for k in keys %}
+    <tr>
+      <td>{{ k.label }}</td>
+      <td>{{ k.created_at.strftime('%d.%m.%Y') }}</td>
+      <td>{{ k.last_used_at.strftime('%d.%m.%Y %H:%M') if k.last_used_at else '–' }}</td>
+      <td>{{ k.expires_at.strftime('%d.%m.%Y') if k.expires_at else '∞' }}</td>
+      <td><span class="badge {% if k.is_active %}badge--active{% else %}badge--closed{% endif %}">{{ 'Aktiv' if k.is_active else 'Gesperrt' }}</span></td>
+      <td>
+        {% if k.is_active %}
+        <form method="post" action="/admin/api-keys/{{ k.id }}/sperren" style="display:inline">
+          <button type="submit" class="btn btn--xs btn--danger"
+                  onclick="return confirm('Key sperren?')">Sperren</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

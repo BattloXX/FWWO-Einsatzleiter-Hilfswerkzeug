@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Einsatz #{{ incident.id }} – Archiv{% endblock %}
+{% block content %}
+<div class="page-header">
+  <a href="/archiv" class="btn btn--ghost">← Archiv</a>
+  <h2>Einsatz {{ incident.alarm_type_code }} #{{ incident.id }}</h2>
+  <div class="page-header__actions">
+    <a href="/archiv/{{ incident.id }}/pdf" class="btn btn--primary">PDF herunterladen</a>
+    <a href="/einsatz/{{ incident.id }}/historie" class="btn btn--ghost">Änderungshistorie</a>
+  </div>
+</div>
+
+{% if incident.is_exercise %}<div class="exercise-topbar">⚠ ÜBUNG / SIMULATION ⚠</div>{% endif %}
+
+<div class="detail-grid">
+  <div class="detail-box">
+    <h3>Stammdaten</h3>
+    <dl class="detail-list">
+      <dt>Stichwort</dt><dd>{{ incident.alarm_type_code }}</dd>
+      <dt>Start</dt><dd>{{ incident.started_at.strftime('%d.%m.%Y %H:%M') }} Uhr</dd>
+      {% if incident.closed_at %}<dt>Ende</dt><dd>{{ incident.closed_at.strftime('%d.%m.%Y %H:%M') }} Uhr</dd>{% endif %}
+      <dt>Adresse</dt><dd>{{ incident.address_street or '–' }} {{ incident.address_no or '' }}, {{ incident.address_city or '' }}</dd>
+      <dt>Meldung</dt><dd>{{ incident.report_text or '–' }}</dd>
+      <dt>Einsatzgrund</dt><dd>{{ incident.reason or '–' }}</dd>
+    </dl>
+  </div>
+
+  <div class="detail-box">
+    <h3>Fahrzeuge ({{ incident.vehicles|length }})</h3>
+    {% for v in incident.vehicles %}
+    <div class="vehicle-row">
+      <span class="vehicle-code">{{ v.vehicle_master.code }}</span>
+      <span class="vehicle-dept">{{ v.vehicle_master.dept.name }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="detail-box">
+    <h3>Aufträge ({{ incident.tasks|length }})</h3>
+    {% for t in incident.tasks %}
+    <div class="task-row {% if t.is_done %}task-row--done{% endif %}">
+      <span>{{ t.title }}</span>
+      {% if t.is_done %}<span class="badge badge--done">✓</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if incident.rescued_persons %}
+  <div class="detail-box">
+    <h3>Gerettete Personen ({{ incident.rescued_persons|length }})</h3>
+    {% for p in incident.rescued_persons %}
+    <div class="person-row">{{ p.gender }}, {{ p.person_group }}{% if p.name %}, {{ p.name }}{% endif %}{% if p.location %} – {{ p.location }}{% endif %}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if incident.breathing_troops %}
+  <div class="detail-box detail-box--full">
+    <h3>Atemschutz</h3>
+    <table class="table">
+      <thead><tr><th>Trupp</th><th>Auftrag</th><th>Status</th><th>Einsatzbeginn</th><th>Rückzug</th><th>Zurück</th></tr></thead>
+      <tbody>
+        {% for t in incident.breathing_troops %}
+        <tr>
+          <td>{{ t.name }}</td>
+          <td>{{ t.task_text or '–' }}</td>
+          <td>{{ t.status }}</td>
+          <td>{{ t.entry_at.strftime('%H:%M') if t.entry_at else '–' }}</td>
+          <td>{{ t.withdraw_at.strftime('%H:%M') if t.withdraw_at else '–' }}</td>
+          <td>{{ t.back_at.strftime('%H:%M') if t.back_at else '–' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="detail-box detail-box--full">
+    <h3>Verlauf</h3>
+    <div class="log-list">
+      {% for entry in incident.log_entries %}
+      <div class="log-entry log-entry--{{ entry.level }}">
+        <span class="log-entry__time">{{ entry.ts.strftime('%H:%M:%S') }}</span>
+        <span class="log-entry__text">{{ entry.text }}</span>
+      </div>
+      {% else %}
+      <p class="text-muted">Kein Verlauf.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

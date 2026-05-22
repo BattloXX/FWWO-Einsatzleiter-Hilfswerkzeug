@@ -1,0 +1,229 @@
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db import Base
+
+# Fixed column codes (always present)
+FIXED_COLUMNS = ["dispatched", "active", "tasks", "messages", "neighbor", "rescued"]
+FIXED_COLUMN_TITLES = {
+    "dispatched": "Disponierte Fahrzeuge",
+    "active":     "Tatsächlich im Einsatz",
+    "tasks":      "Aufträge",
+    "messages":   "Meldungen",
+    "neighbor":   "Nachalarmierung",
+    "rescued":    "Gerettete Personen",
+}
+
+
+class Incident(Base):
+    __tablename__ = "incident"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    external_key: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)
+    nummer: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    alarm_type_code: Mapped[str] = mapped_column(String(10), nullable=False, default="T1")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    incident_leader_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=True)
+    is_exercise: Mapped[bool] = mapped_column(Boolean, default=False)
+    address_street: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    address_no: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    address_city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    report_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    columns: Mapped[List["IncidentColumn"]] = relationship(
+        back_populates="incident", order_by="IncidentColumn.display_order", cascade="all, delete-orphan"
+    )
+    vehicles: Mapped[List["IncidentVehicle"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+    tasks: Mapped[List["Task"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+    messages: Mapped[List["Message"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+    rescued_persons: Mapped[List["RescuedPerson"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+    log_entries: Mapped[List["IncidentLog"]] = relationship(
+        back_populates="incident", order_by="IncidentLog.ts", cascade="all, delete-orphan"
+    )
+    changes: Mapped[List["IncidentChange"]] = relationship(
+        back_populates="incident", order_by="IncidentChange.ts", cascade="all, delete-orphan"
+    )
+    breathing_troops: Mapped[List["BreathingTroop"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+    tokens: Mapped[List["IncidentToken"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+
+
+class IncidentColumn(Base):
+    __tablename__ = "incident_column"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
+    is_fixed: Mapped[bool] = mapped_column(Boolean, default=False)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    incident: Mapped["Incident"] = relationship(back_populates="columns")
+    vehicles: Mapped[List["IncidentVehicle"]] = relationship(back_populates="column")
+    tasks: Mapped[List["Task"]] = relationship(
+        back_populates="column",
+        primaryjoin="and_(Task.column_id==IncidentColumn.id, Task.vehicle_id==None)",
+        foreign_keys="Task.column_id",
+        overlaps="column"
+    )
+
+
+class IncidentVehicle(Base):
+    __tablename__ = "incident_vehicle"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    column_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident_column.id"), nullable=False)
+    vehicle_master_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("vehicle_master.id"), nullable=False)
+    commander_member_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("member.id"), nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+    removed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    org_color_override: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    incident: Mapped["Incident"] = relationship(back_populates="vehicles")
+    column: Mapped["IncidentColumn"] = relationship(back_populates="vehicles")
+    vehicle_master: Mapped["VehicleMaster"] = relationship(lazy="joined")
+    commander: Mapped[Optional["Member"]] = relationship(foreign_keys=[commander_member_id], lazy="joined")
+    assigned_tasks: Mapped[List["Task"]] = relationship(
+        back_populates="vehicle",
+        primaryjoin="Task.vehicle_id==IncidentVehicle.id",
+        foreign_keys="Task.vehicle_id",
+    )
+
+    @property
+    def open_task_count(self) -> int:
+        return sum(1 for t in self.assigned_tasks if not t.is_done and not t.is_cancelled)
+
+    @property
+    def status_color(self) -> str:
+        n = self.open_task_count
+        if n == 0:
+            return "green"
+        if n == 1:
+            return "yellow"
+        return "red"
+
+
+class Task(Base):
+    __tablename__ = "task"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    column_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("incident_column.id"), nullable=True)
+    vehicle_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("incident_vehicle.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    done_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=True)
+
+    incident: Mapped["Incident"] = relationship(back_populates="tasks")
+    column: Mapped[Optional["IncidentColumn"]] = relationship(
+        back_populates="tasks",
+        primaryjoin="and_(Task.column_id==IncidentColumn.id, Task.vehicle_id==None)",
+        foreign_keys=[column_id],
+        overlaps="tasks"
+    )
+    vehicle: Mapped[Optional["IncidentVehicle"]] = relationship(
+        back_populates="assigned_tasks",
+        foreign_keys=[vehicle_id],
+    )
+
+
+class Message(Base):
+    __tablename__ = "message"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    due_after_sec: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    due_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    popup_shown: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    done_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    incident: Mapped["Incident"] = relationship(back_populates="messages")
+
+
+class RescuedPerson(Base):
+    __tablename__ = "rescued_person"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    gender: Mapped[str] = mapped_column(String(30), nullable=False, default="Unbekannt")
+    person_group: Mapped[str] = mapped_column(String(30), nullable=False, default="Erwachsen")
+    age_range: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    vehicle_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("incident_vehicle.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    incident: Mapped["Incident"] = relationship(back_populates="rescued_persons")
+
+
+class IncidentLog(Base):
+    __tablename__ = "incident_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    level: Mapped[str] = mapped_column(String(10), default="info")
+    user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    entity_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+
+    incident: Mapped["Incident"] = relationship(back_populates="log_entries")
+
+
+class IncidentChange(Base):
+    """Granular per-field change log — replaces snapshot approach."""
+    __tablename__ = "incident_change"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    before_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    after_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=True)
+    api_key_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("api_key.id"), nullable=True)
+    ip: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    incident: Mapped["Incident"] = relationship(back_populates="changes")
+
+
+class IncidentToken(Base):
+    """QR-Code token valid for the lifetime of the incident."""
+    __tablename__ = "incident_token"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    issued_by_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=False)
+    target_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    incident: Mapped["Incident"] = relationship(back_populates="tokens")
+
+
+# Import BreathingTroop here to avoid circular import in Incident.breathing_troops
+from app.models.breathing import BreathingTroop  # noqa: E402

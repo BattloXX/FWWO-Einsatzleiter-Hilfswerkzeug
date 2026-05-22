@@ -1,0 +1,26 @@
+<div class="card card--task {% if task.is_done %}card--done{% endif %} {% if task.is_cancelled %}card--cancelled{% endif %}"
+     data-uid="{{ task.id }}" data-kind="task">
+  <div class="card__body">
+    <div class="card__title">{{ task.title }}</div>
+    {% if task.detail %}<div class="card__sub">{{ task.detail }}</div>{% endif %}
+    <div class="card__meta">
+      <span class="card__time">{{ task.created_at.strftime('%H:%M') }}</span>
+    </div>
+  </div>
+  {% if can_edit and not task.is_done %}
+  <div class="card__footer">
+    <button class="btn btn--xs btn--ghost"
+            hx-post="/einsatz/{{ incident.id }}/aufgabe/{{ task.id }}/erledigt"
+            hx-swap="none">✓ Erledigt</button>
+    <select class="form-select form-select--xs"
+            onchange="assignTask({{ task.id }}, this.value, {{ incident.id }})">
+      <option value="">Fahrzeug zuweisen...</option>
+      {% for v in incident.vehicles %}
+      {% if v.removed_at is none %}
+      <option value="{{ v.id }}">{{ v.vehicle_master.code }}</option>
+      {% endif %}
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+</div>

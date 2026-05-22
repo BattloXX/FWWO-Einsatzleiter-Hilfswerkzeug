@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}{{ incident.alarm_type_code }} – Einsatz #{{ incident.id }}{% endblock %}
+
+{% block head_extra %}
+<style>
+  .board-wrap { display: flex; gap: 0; height: calc(100vh - var(--topnav-h)); overflow: hidden; }
+  .sidebar { width: 300px; min-width: 220px; overflow-y: auto; border-right: 1px solid var(--border); padding: 12px; flex-shrink: 0; }
+  .kanban { flex: 1; display: flex; overflow-x: auto; gap: 10px; padding: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Exercise Banner -->
+{% if incident.is_exercise %}
+<div class="exercise-topbar">⚠ ÜBUNG / SIMULATION ⚠</div>
+{% endif %}
+
+<!-- Incident Header -->
+<div class="incident-header" x-data="incidentBoard({{ incident.id }}, '{{ incident.alarm_type_code }}', '{{ incident.started_at.isoformat() }}')">
+  <div class="incident-header__alarm">
+    <span class="alarm-badge alarm-badge--{{ incident.alarm_type_code[:1]|lower }}">{{ incident.alarm_type_code }}</span>
+    {% if incident.address_street %}
+    <span class="incident-header__address">{{ incident.address_street }} {{ incident.address_no or '' }}{% if incident.address_city %}, {{ incident.address_city }}{% endif %}</span>
+    {% endif %}
+  </div>
+  <div class="incident-header__timer">
+    <span class="timer" x-text="timerDisplay">00:00</span>
+  </div>
+  <div class="incident-header__actions">
+    <a href="/einsatz/{{ incident.id }}/atemschutz" class="btn btn--sm btn--secondary" title="Atemschutzüberwachung">AS-Überwachung</a>
+    <a href="/einsatz/{{ incident.id }}/qr" class="btn btn--sm btn--ghost" title="QR-Code anzeigen">QR</a>
+    <a href="/archiv/{{ incident.id }}/pdf" class="btn btn--sm btn--ghost" title="PDF herunterladen">PDF</a>
+    {% if can_edit %}
+    <button class="btn btn--sm btn--danger"
+            onclick="if(confirm('Einsatz wirklich abschließen?')) { fetch('/einsatz/{{ incident.id }}/abschliessen', {method:'POST'}); }"
+            title="Einsatz abschließen">Abschließen</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="board-wrap" x-data="incidentBoard({{ incident.id }}, '{{ incident.alarm_type_code }}', '{{ incident.started_at.isoformat() }}')">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- Lage-Ticker -->
+    <div class="lage-ticker" id="lageTicker" x-data="lageTicker({{ lage_hints|map(attribute='text')|list|tojson }})">
+      <span class="lage-ticker__icon">ℹ</span>
+      <span class="lage-ticker__text" x-text="currentHint"></span>
+    </div>
+
+    <!-- Aufgabe hinzufügen -->
+    {% if can_edit %}
+    <div class="sidebar-box">
+      <div class="sidebar-box__title">Auftrag hinzufügen</div>
+      <form hx-post="/einsatz/{{ incident.id }}/aufgabe" hx-swap="none" @htmx:after-request="this.reset()">
+        <div class="input-row">
+          <input type="text" name="title" placeholder="Auftrag..." class="form-input" id="taskInput"
+                 required autocomplete="off">
+          <button type="button" class="btn btn--icon btn--mic" title="Sprachdiktat (Strg+M)"
+                  onclick="startVoice('taskInput')">🎤</button>
+          <button type="submit" class="btn btn--primary btn--sm">+</button>
+        </div>
+        <input type="text" name="detail" placeholder="Zusatzinfo (optional)" class="form-input form-input--detail">
+      </form>
+      <!-- Vorschläge -->
+      {% if task_suggestions %}
+      <div class="task-suggestions">
+        {% for ts in task_suggestions %}
+        <button class="suggestion-pill"
+                hx-post="/einsatz/{{ incident.id }}/aufgabe"
+                hx-vals='{"title": "{{ ts.text }}"}'
+                hx-swap="none">{{ ts.text }}</button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Meldung hinzufügen -->
+    <div class="sidebar-box">
+      <div class="sidebar-box__title">Meldung hinzufügen <kbd>Strg+M</kbd></div>
+      <form hx-post="/einsatz/{{ incident.id }}/meldung" hx-swap="none" @htmx:after-request="this.reset()">
+        <input type="text" name="title" placeholder="Meldung..." class="form-input" id="msgInput" required autocomplete="off">
+        <div class="input-row">
+          <input type="number" name="due_after_min" placeholder="Erinnerung in Min." class="form-input" min="0" value="0">
+          <button type="submit" class="btn btn--primary btn--sm">+</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Abschnitt hinzufügen -->
+    <div class="sidebar-box">
+      <div class="sidebar-box__title">Abschnitt hinzufügen</div>
+      <form hx-post="/einsatz/{{ incident.id }}/abschnitt" hx-swap="none">
+        <div class="input-row">
+          <input type="text" name="title" class="form-input" placeholder="Abschnitt..." required>
+          <button type="submit" class="btn btn--primary btn--sm">+</button>
+        </div>
+      </form>
+      <div class="section-presets">
+        <button hx-post="/einsatz/{{ incident.id }}/abschnitt" hx-vals='{"title":"Abschnitt 1"}' hx-swap="none" class="btn btn--ghost btn--xs">Abschnitt 1</button>
+        <button hx-post="/einsatz/{{ incident.id }}/abschnitt" hx-vals='{"title":"Bereitstellung"}' hx-swap="none" class="btn btn--ghost btn--xs">Bereitstellung</button>
+        <button hx-post="/einsatz/{{ incident.id }}/abschnitt" hx-vals='{"title":"Atemschutz"}' hx-swap="none" class="btn btn--ghost btn--xs">Atemschutz</button>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Verlauf -->
+    <div class="sidebar-box">
+      <div class="sidebar-box__title">Verlauf <a href="/einsatz/{{ incident.id }}/historie" class="link-sm">Vollansicht</a></div>
+      <div class="log-list" id="logList">
+        {% for entry in incident.log_entries[-20:]|reverse %}
+        <div class="log-entry log-entry--{{ entry.level }}">
+          <span class="log-entry__time">{{ entry.ts.strftime('%H:%M') }}</span>
+          <span class="log-entry__text">{{ entry.text }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% if can_edit %}
+      <form hx-post="/einsatz/{{ incident.id }}/log" hx-swap="none" @htmx:after-request="this.reset()">
+        <div class="input-row">
+          <input type="text" name="text" class="form-input" placeholder="Eintrag..." required>
+          <button type="submit" class="btn btn--ghost btn--sm">+</button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+
+  </aside>
+
+  <!-- Kanban Board -->
+  <div class="kanban" id="kanban">
+    {% set columns = incident.columns %}
+    {% for col in columns %}
+    {% set col_vehicles = incident.vehicles|selectattr('column_id', 'eq', col.id)|selectattr('removed_at', 'none')|list %}
+    {% set col_tasks = incident.tasks|selectattr('column_id', 'eq', col.id)|selectattr('vehicle_id', 'none')|list %}
+    {% set col_messages = incident.messages if col.code == 'messages' else [] %}
+    {% set col_persons = incident.rescued_persons if col.code == 'rescued' else [] %}
+
+    <div class="kanban-col" id="col-{{ col.id }}"
+         data-col-id="{{ col.id }}" data-col-code="{{ col.code }}">
+      <div class="kanban-col__header">
+        <span class="kanban-col__title">{{ col.title }}</span>
+        <span class="kanban-col__count">
+          {{ col_vehicles|length + col_tasks|length + col_messages|length + col_persons|length }}
+        </span>
+      </div>
+      <div class="kanban-col__body sortable-zone" id="zone-{{ col.id }}">
+
+        {% for vehicle in col_vehicles %}
+        {% include "incident/_vehicle_card.html" %}
+        {% endfor %}
+
+        {% for task in col_tasks %}
+        {% include "incident/_task_card.html" %}
+        {% endfor %}
+
+        {% if col.code == 'messages' %}
+        {% for msg in col_messages %}
+        {% include "incident/_message_card.html" %}
+        {% endfor %}
+        {% endif %}
+
+        {% if col.code == 'rescued' %}
+        {% for person in col_persons %}
+        {% include "incident/_person_card.html" %}
+        {% endfor %}
+        {% if can_edit %}
+        <button class="btn btn--ghost btn--full btn--sm"
+                onclick="document.getElementById('personWizard').showModal()">+ Person erfassen</button>
+        {% endif %}
+        {% endif %}
+
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Person Wizard Dialog -->
+<dialog class="modal" id="personWizard">
+  <div class="modal__content" x-data="personWizard()">
+    <div class="modal__header">
+      <h3>Person erfassen</h3>
+      <button type="button" @click="$el.closest('dialog').close()" class="modal__close">×</button>
+    </div>
+    <form method="post" action="/einsatz/{{ incident.id }}/person">
+      <div class="modal__body">
+        <div x-show="step === 1">
+          <p class="wizard-label">Geschlecht</p>
+          <div class="wizard-pills">
+            <button type="button" @click="gender='Männlich'; step=2" class="wizard-pill">👨 Männlich</button>
+            <button type="button" @click="gender='Weiblich'; step=2" class="wizard-pill">👩 Weiblich</button>
+            <button type="button" @click="gender='Divers / Unbekannt'; step=2" class="wizard-pill">🧑 Divers / Unbekannt</button>
+          </div>
+        </div>
+        <div x-show="step === 2">
+          <p class="wizard-label">Personengruppe</p>
+          <div class="wizard-pills">
+            <button type="button" @click="group='Kind'; step=3" class="wizard-pill">🧒 Kind</button>
+            <button type="button" @click="group='Erwachsen'; step=3" class="wizard-pill">🧑 Erwachsen</button>
+            <button type="button" @click="group='Ältere Person'; step=3" class="wizard-pill">👴 Ältere Person</button>
+          </div>
+        </div>
+        <div x-show="step === 3">
+          <p class="wizard-label">Details</p>
+          <input type="hidden" name="gender" :value="gender">
+          <input type="hidden" name="person_group" :value="group">
+          <div class="form-group">
+            <label>Altersgruppe</label>
+            <select name="age_range" class="form-select">
+              <option value="">Unbekannt</option>
+              <template x-for="a in ageOptions" :key="a"><option :value="a" x-text="a"></option></template>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Name (falls bekannt)</label>
+            <input type="text" name="name" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Fundort</label>
+            <input type="text" name="location" class="form-input" placeholder="z.B. Wohnung 1. OG">
+          </div>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="button" @click="step > 1 ? step-- : $el.closest('dialog').close()" class="btn btn--ghost">
+          <span x-text="step > 1 ? '← Zurück' : 'Abbrechen'"></span>
+        </button>
+        <button x-show="step === 3" type="submit" class="btn btn--primary">Speichern</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function personWizard() {
+  return {
+    step: 1, gender: '', group: '',
+    get ageOptions() {
+      if (this.group === 'Kind') return ['0–4 Jahre','5–9 Jahre','10–14 Jahre','15–17 Jahre'];
+      if (this.group === 'Ältere Person') return ['65–69 Jahre','70–74 Jahre','75–79 Jahre','80+ Jahre'];
+      return ['18–24 Jahre','25–34 Jahre','35–44 Jahre','45–54 Jahre','55–64 Jahre'];
+    }
+  };
+}
+
+function lageTicker(hints) {
+  return {
+    hints, idx: 0,
+    get currentHint() { return this.hints[this.idx] || ''; },
+    init() { setInterval(() => { this.idx = (this.idx + 1) % this.hints.length; }, 8000); }
+  };
+}
+</script>
+{% endblock %}

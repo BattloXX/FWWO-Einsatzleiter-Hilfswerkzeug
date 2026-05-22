@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Einsatzleiter FF Wolfurt{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2 class="page-title">Dashboard</h2>
+  <button class="btn btn--primary" @click="$refs.newIncidentModal.showModal()">
+    + Neuer Einsatz
+  </button>
+</div>
+
+{% if active_incidents %}
+<section class="section">
+  <h3 class="section-title">Aktive Einsätze ({{ active_incidents|length }})</h3>
+  <div class="incident-cards">
+    {% for inc in active_incidents %}
+    <a href="/einsatz/{{ inc.id }}" class="incident-card {% if inc.is_exercise %}incident-card--exercise{% endif %}">
+      {% if inc.is_exercise %}<div class="exercise-banner">ÜBUNG</div>{% endif %}
+      <div class="incident-card__alarm">{{ inc.alarm_type_code }}</div>
+      <div class="incident-card__address">
+        {{ inc.address_street or '' }} {{ inc.address_no or '' }}{% if inc.address_city %}, {{ inc.address_city }}{% endif %}
+      </div>
+      <div class="incident-card__meta">
+        <span class="badge badge--active">Aktiv</span>
+        <span class="incident-card__time">seit {{ inc.started_at.strftime('%H:%M') }} Uhr</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<div class="empty-state">
+  <div class="empty-state__icon">🔔</div>
+  <p>Keine aktiven Einsätze.</p>
+  <p class="text-muted">Einsätze werden automatisch per API angelegt oder können manuell gestartet werden.</p>
+</div>
+{% endif %}
+
+<!-- Neuer Einsatz Modal -->
+<dialog class="modal" id="newIncidentModal" x-ref="newIncidentModal">
+  <form method="post" action="/einsatz/neu" class="modal__content">
+    <div class="modal__header">
+      <h3>Neuer Einsatz</h3>
+      <button type="button" formnovalidate @click="$refs.newIncidentModal.close()" class="modal__close">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="form-group">
+        <label>Alarmstichwort</label>
+        <select name="alarm_type_code" class="form-select" required>
+          {% for at in alarm_types %}
+          <option value="{{ at.code }}">{{ at.code }} – {{ at.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Straße</label>
+          <input type="text" name="address_street" class="form-input" placeholder="Senderstraße">
+        </div>
+        <div class="form-group form-group--narrow">
+          <label>Nr.</label>
+          <input type="text" name="address_no" class="form-input" placeholder="34">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Ort</label>
+        <input type="text" name="address_city" class="form-input" value="Wolfurt">
+      </div>
+      <div class="form-group">
+        <label>Meldung</label>
+        <input type="text" name="report_text" class="form-input" placeholder="Kurze Meldung...">
+      </div>
+      <div class="form-group form-group--checkbox">
+        <label>
+          <input type="checkbox" name="is_exercise" value="true"> Übung / Simulation
+        </label>
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button type="button" formnovalidate @click="$refs.newIncidentModal.close()" class="btn btn--ghost">Abbrechen</button>
+      <button type="submit" class="btn btn--primary">Einsatz starten</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-open new incident modal via WebSocket global channel
+document.addEventListener('alpine:init', () => {
+  Alpine.data('appState', () => ({
+    toasts: [], newIncidentAlert: null,
+    addToast(msg, type = 'info') {
+      const id = Date.now();
+      this.toasts.push({ id, msg, type });
+      setTimeout(() => this.removeToast(id), 5000);
+    },
+    removeToast(id) { this.toasts = this.toasts.filter(t => t.id !== id); },
+    onIncidentCreated(detail) {
+      if (!detail.is_exercise) this.newIncidentAlert = detail;
+      else this.addToast('[ÜBUNG] Neuer Einsatz: ' + detail.alarm, 'warn');
+    },
+  }));
+});
+</script>
+{% endblock %}

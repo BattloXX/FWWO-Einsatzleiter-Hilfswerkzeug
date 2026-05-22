@@ -1,0 +1,13 @@
+<div class="card card--rescue" data-uid="{{ person.id }}" data-kind="person">
+  <div class="card__body">
+    <div class="card__title">
+      {{ person.gender }}, {{ person.person_group }}
+      {% if person.age_range %}<span class="card__age">{{ person.age_range }}</span>{% endif %}
+    </div>
+    {% if person.name %}<div class="card__sub">{{ person.name }}</div>{% endif %}
+    {% if person.location %}<div class="card__sub">📍 {{ person.location }}</div>{% endif %}
+    <div class="card__meta">
+      <span class="card__time">{{ person.created_at.strftime('%H:%M') }}</span>
+    </div>
+  </div>
+</div>

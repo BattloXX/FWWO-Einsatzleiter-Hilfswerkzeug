@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Benutzer – Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Benutzerverwaltung</h2>
+  <button class="btn btn--primary" onclick="document.getElementById('newUserModal').showModal()">+ Benutzer</button>
+</div>
+<table class="table">
+  <thead><tr><th>Benutzername</th><th>Name</th><th>Rollen</th><th>Letzter Login</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ u.display_name }}</td>
+      <td>{{ u.roles|map(attribute='label')|join(', ') or '–' }}</td>
+      <td>{{ u.last_login_at.strftime('%d.%m.%Y %H:%M') if u.last_login_at else '–' }}</td>
+      <td><span class="badge {% if u.active %}badge--active{% else %}badge--closed{% endif %}">{{ 'Aktiv' if u.active else 'Deaktiviert' }}</span></td>
+      <td>
+        {% if u.id != user.id and u.active %}
+        <form method="post" action="/admin/benutzer/{{ u.id }}/loeschen" style="display:inline">
+          <button type="submit" class="btn btn--xs btn--danger"
+                  onclick="return confirm('Benutzer deaktivieren?')">Deaktivieren</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<dialog class="modal" id="newUserModal">
+  <form method="post" action="/admin/benutzer/neu" class="modal__content">
+    <div class="modal__header">
+      <h3>Neuer Benutzer</h3>
+      <button type="button" onclick="this.closest('dialog').close()" class="modal__close">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row">
+        <div class="form-group"><label>Benutzername</label><input type="text" name="username" class="form-input" required></div>
+        <div class="form-group"><label>Anzeigename</label><input type="text" name="display_name" class="form-input"></div>
+      </div>
+      <div class="form-group"><label>Passwort</label><input type="password" name="password" class="form-input" required></div>
+      <div class="form-group">
+        <label>Rollen</label>
+        {% for r in roles %}
+        <label class="checkbox-label">
+          <input type="checkbox" name="role_codes" value="{{ r.code }}"> {{ r.label }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button type="button" onclick="this.closest('dialog').close()" class="btn btn--ghost">Abbrechen</button>
+      <button type="submit" class="btn btn--primary">Anlegen</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

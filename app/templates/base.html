@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#b71921">
+  <title>{% block title %}Einsatzleiter – FF Wolfurt{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="icon" href="/static/img/favicon.ico">
+  {% block head_extra %}{% endblock %}
+</head>
+<body x-data="appState()" @incident-created.window="onIncidentCreated($event.detail)">
+
+  {% if user %}
+  <nav class="topnav" id="topnav">
+    <div class="topnav__brand">
+      <img src="/static/img/logo.png" alt="FF Wolfurt" class="topnav__logo" onerror="this.style.display='none'">
+      <span class="topnav__title">FF Wolfurt</span>
+    </div>
+    <div class="topnav__links">
+      <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+      <a href="/archiv" class="nav-link {% if '/archiv' in request.url.path %}active{% endif %}">Archiv</a>
+      <a href="/statistik" class="nav-link {% if '/statistik' in request.url.path %}active{% endif %}">Statistik</a>
+      {% if 'admin' in user.roles|map(attribute='code')|list %}
+      <a href="/admin/benutzer" class="nav-link {% if '/admin' in request.url.path %}active{% endif %}">Admin</a>
+      {% endif %}
+    </div>
+    <div class="topnav__user">
+      <span class="user-badge">{{ user.display_name }}</span>
+      <a href="/logout" class="btn btn--ghost btn--sm">Abmelden</a>
+    </div>
+  </nav>
+  {% endif %}
+
+  <!-- Toast container -->
+  <div id="toast-container" x-show="toasts.length > 0" class="toast-container">
+    <template x-for="toast in toasts" :key="toast.id">
+      <div class="toast" :class="'toast--' + toast.type" x-transition>
+        <span x-text="toast.msg"></span>
+        <button @click="removeToast(toast.id)" class="toast__close">×</button>
+      </div>
+    </template>
+  </div>
+
+  <!-- Global incident-created popup -->
+  <div x-show="newIncidentAlert" x-cloak class="incident-alert-overlay" @click.self="newIncidentAlert = null">
+    <div class="incident-alert">
+      <div class="incident-alert__badge" x-text="newIncidentAlert?.alarm"></div>
+      <div class="incident-alert__title">Neuer Einsatz!</div>
+      <div class="incident-alert__body" x-text="newIncidentAlert?.address"></div>
+      <div class="incident-alert__actions">
+        <a :href="newIncidentAlert?.url" class="btn btn--primary">Öffnen</a>
+        <button @click="newIncidentAlert = null" class="btn btn--ghost">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="/static/js/alpine.min.js" defer></script>
+  <script src="/static/js/htmx.min.js"></script>
+  <script src="/static/js/sortable.min.js"></script>
+  <script src="/static/js/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,48 @@
+"""WebSocket connection manager – pub/sub per incident."""
+import asyncio
+import json
+from collections import defaultdict
+from typing import Dict, Set
+
+from fastapi import WebSocket
+
+
+class ConnectionManager:
+    def __init__(self):
+        self._connections: Dict[int, Set[WebSocket]] = defaultdict(set)
+        self._lock = asyncio.Lock()
+
+    async def connect(self, incident_id: int, ws: WebSocket) -> None:
+        await ws.accept()
+        async with self._lock:
+            self._connections[incident_id].add(ws)
+
+    async def disconnect(self, incident_id: int, ws: WebSocket) -> None:
+        async with self._lock:
+            self._connections[incident_id].discard(ws)
+
+    async def broadcast(self, incident_id: int, event: dict) -> None:
+        payload = json.dumps(event, ensure_ascii=False, default=str)
+        dead: Set[WebSocket] = set()
+        for ws in list(self._connections.get(incident_id, [])):
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                dead.add(ws)
+        if dead:
+            async with self._lock:
+                self._connections[incident_id] -= dead
+
+    async def broadcast_all(self, event: dict) -> None:
+        """Broadcast to every connected client (e.g. new incident created)."""
+        payload = json.dumps(event, ensure_ascii=False, default=str)
+        all_ws = {ws for conns in self._connections.values() for ws in conns}
+        dead: Set[WebSocket] = set()
+        for ws in all_ws:
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                dead.add(ws)
+
+
+manager = ConnectionManager()

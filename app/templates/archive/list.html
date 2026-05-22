@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Einsatz-Archiv{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Einsatz-Archiv</h2>
+</div>
+<div class="filter-bar" x-data="{showExercise: false, search: ''}">
+  <input type="text" x-model="search" placeholder="Suche..." class="form-input form-input--search">
+  <label class="toggle-label">
+    <input type="checkbox" x-model="showExercise"> Übungen anzeigen
+  </label>
+</div>
+<div class="archive-table-wrap">
+  <table class="table" x-data="{showExercise: false, search: ''}">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Stichwort</th>
+        <th>Datum</th>
+        <th>Adresse</th>
+        <th>Status</th>
+        <th>Dauer</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inc in incidents %}
+      <tr class="{% if inc.is_exercise %}row--exercise{% endif %}">
+        <td>{{ inc.nummer or inc.id }}</td>
+        <td><span class="alarm-badge alarm-badge--sm alarm-badge--{{ inc.alarm_type_code[:1]|lower }}">{{ inc.alarm_type_code }}</span></td>
+        <td>{{ inc.started_at.strftime('%d.%m.%Y %H:%M') }}</td>
+        <td>{{ inc.address_street or '' }} {{ inc.address_no or '' }}{% if inc.address_city %}, {{ inc.address_city }}{% endif %}</td>
+        <td>
+          {% if inc.is_exercise %}<span class="badge badge--exercise">ÜBUNG</span>
+          {% elif inc.status == 'active' %}<span class="badge badge--active">Aktiv</span>
+          {% else %}<span class="badge badge--closed">Abgeschlossen</span>{% endif %}
+        </td>
+        <td>
+          {% if inc.closed_at %}
+          {% set dur = (inc.closed_at - inc.started_at).seconds %}
+          {{ (dur // 3600)|string + 'h ' if dur >= 3600 else '' }}{{ ((dur % 3600) // 60) }}min
+          {% elif inc.status == 'active' %}
+          laufend
+          {% else %}–{% endif %}
+        </td>
+        <td>
+          <a href="/archiv/{{ inc.id }}" class="btn btn--xs btn--ghost">Details</a>
+          <a href="/archiv/{{ inc.id }}/pdf" class="btn btn--xs btn--ghost">PDF</a>
+          {% if inc.status == 'active' %}
+          <a href="/einsatz/{{ inc.id }}" class="btn btn--xs btn--primary">Board</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="text-center text-muted">Keine Einsätze vorhanden.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

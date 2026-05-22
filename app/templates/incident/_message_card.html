@@ -1,0 +1,17 @@
+<div class="card card--message {% if msg.is_done %}card--done{% endif %}"
+     data-uid="{{ msg.id }}" data-kind="message">
+  <div class="card__body">
+    <div class="card__title">{{ msg.title }}</div>
+    {% if msg.detail %}<div class="card__sub">{{ msg.detail }}</div>{% endif %}
+    {% if msg.due_at %}
+    <div class="card__due">⏰ Fällig: {{ msg.due_at.strftime('%H:%M') }}</div>
+    {% endif %}
+  </div>
+  {% if can_edit %}
+  <div class="card__footer">
+    <button class="btn btn--xs btn--ghost"
+            hx-post="/einsatz/{{ incident.id }}/meldung/{{ msg.id }}/erledigt"
+            hx-swap="none">✓ Erledigt</button>
+  </div>
+  {% endif %}
+</div>

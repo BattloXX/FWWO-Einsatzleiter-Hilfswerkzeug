@@ -1,0 +1,36 @@
+<div class="card card--vehicle" data-uid="{{ vehicle.id }}" data-kind="vehicle"
+     style="--org-color: {{ vehicle.vehicle_master.dept.color }}">
+  <div class="card__status card__status--{{ vehicle.status_color }}"></div>
+  <div class="card__body">
+    <div class="card__title">
+      {{ vehicle.vehicle_master.code }}
+      <span class="card__org">{{ vehicle.vehicle_master.dept.name }}</span>
+    </div>
+    <div class="card__sub">{{ vehicle.vehicle_master.type }}</div>
+    {% if vehicle.commander %}
+    <div class="card__gk">GK: {{ vehicle.commander.full_name }}</div>
+    {% endif %}
+    {% if vehicle.assigned_tasks %}
+    <div class="card__tasks">
+      {% for t in vehicle.assigned_tasks %}
+      <div class="assigned-task {% if t.is_done %}assigned-task--done{% endif %}">
+        <input type="checkbox" {% if t.is_done %}checked{% endif %}
+               hx-post="/einsatz/{{ incident.id }}/aufgabe/{{ t.id }}/erledigt"
+               hx-swap="none" class="task-check">
+        <span>{{ t.title }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% if can_edit %}
+  <div class="card__footer">
+    <select class="form-select form-select--xs" onchange="moveVehicle({{ vehicle.id }}, this.value, {{ incident.id }})">
+      <option value="">Verschieben nach...</option>
+      {% for col in incident.columns %}
+      <option value="{{ col.id }}" {% if col.id == vehicle.column_id %}disabled{% endif %}>{{ col.title }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+</div>

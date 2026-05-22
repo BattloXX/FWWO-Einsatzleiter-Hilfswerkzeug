@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Audit-Log – Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>System-Audit-Log</h2>
+</div>
+<table class="table table--compact">
+  <thead><tr><th>Zeit</th><th>Aktion</th><th>User</th><th>Einsatz</th><th>IP</th></tr></thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td class="nowrap">{{ e.created_at.strftime('%d.%m. %H:%M:%S') }}</td>
+      <td><span class="badge badge--action">{{ e.action }}</span></td>
+      <td>{{ e.user_id or '–' }}</td>
+      <td>{{ e.incident_id or '–' }}</td>
+      <td>{{ e.ip or '–' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="text-center text-muted">Keine Einträge.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

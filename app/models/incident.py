@@ -29,6 +29,8 @@ class Incident(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     incident_leader_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=True)
+    # primary_org_id: the organisation leading this incident
+    primary_org_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("fire_dept.id"), nullable=True)
     is_exercise: Mapped[bool] = mapped_column(Boolean, default=False)
     address_street: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     address_no: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -52,6 +54,22 @@ class Incident(Base):
     )
     breathing_troops: Mapped[List["BreathingTroop"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
     tokens: Mapped[List["IncidentToken"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+    collaborating_orgs: Mapped[List["IncidentOrg"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+
+
+class IncidentOrg(Base):
+    """Organisations, die an einem Einsatz beteiligt sind (multi-org collaboration)."""
+    __tablename__ = "incident_org"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    org_id: Mapped[int] = mapped_column(Integer, ForeignKey("fire_dept.id", ondelete="CASCADE"), nullable=False)
+    # role: 'leader' (primary org) or 'collaborator'
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="collaborator")
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    added_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=True)
+
+    incident: Mapped["Incident"] = relationship(back_populates="collaborating_orgs")
 
 
 class IncidentColumn(Base):

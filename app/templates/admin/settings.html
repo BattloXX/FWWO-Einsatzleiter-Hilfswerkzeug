@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen – {{ org.name if org else "System" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Einstellungen</h1>
+  {% if request.query_params.get('saved') %}
+  <div class="alert alert-success">Einstellungen gespeichert.</div>
+  {% endif %}
+</div>
+
+{% if org %}
+<section class="card mb-4">
+  <div class="card-header"><h2>Organisation: {{ org.name }}</h2></div>
+  <div class="card-body">
+    <form method="post" action="/admin/settings/org" enctype="multipart/form-data">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Organisationsname</label>
+          <input type="text" name="org_name" value="{{ org.name }}" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label>Kontakt E-Mail</label>
+          <input type="email" name="contact_email" value="{{ org.contact_email or '' }}" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Telefon</label>
+          <input type="tel" name="contact_phone" value="{{ org.contact_phone or '' }}" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Straße</label>
+          <input type="text" name="street" value="{{ org.street or '' }}" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Ort</label>
+          <input type="text" name="city" value="{{ org.city or '' }}" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Primärfarbe (Hex)</label>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <input type="color" name="primary_color"
+                   value="{{ org_settings.primary_color if org_settings else org.color }}"
+                   class="form-control" style="width:60px;height:40px;padding:2px">
+            <span>Wird als Akzentfarbe in der App und auf Fahrzeugkarten verwendet</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Logo (PNG/JPG/SVG, max 2 MB)</label>
+          {% if org.logo_path %}
+          <div class="mb-2">
+            <img src="{{ org.logo_path }}" alt="Logo" style="max-height:60px;max-width:200px;object-fit:contain">
+          </div>
+          {% endif %}
+          <input type="file" name="logo" accept="image/*" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Footer-Text (erscheint auf PDF-Berichten)</label>
+          <input type="text" name="footer_text"
+                 value="{{ org_settings.footer_text if org_settings else '' }}"
+                 class="form-control" maxlength="200">
+        </div>
+      </div>
+      <div class="form-actions mt-3">
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+{% if is_sysadmin %}
+<section class="card mb-4">
+  <div class="card-header">
+    <h2>System-Einstellungen</h2>
+    <span class="badge badge-warning">Nur Systemadmin</span>
+  </div>
+  <div class="card-body">
+    <dl class="info-list">
+      <dt>Version</dt><dd>{{ version }}</dd>
+      <dt>Python</dt><dd>3.14</dd>
+      <dt>Port</dt><dd>8092</dd>
+    </dl>
+    <div class="mt-3">
+      <a href="/admin/organisations" class="btn btn-secondary">Organisationen verwalten</a>
+      <a href="/admin/system/update" class="btn btn-warning">System-Update einspielen</a>
+      <a href="/admin/about" class="btn btn-outline">Über diese App</a>
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

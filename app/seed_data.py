@@ -11,7 +11,9 @@ from app.models.user import Role
 
 
 ROLES = [
-    {"code": "admin",                "label": "Administrator"},
+    {"code": "system_admin",         "label": "Systemadministrator (organisationsübergreifend)"},
+    {"code": "admin",                "label": "Administrator (Organisations-Admin)"},
+    {"code": "org_admin",            "label": "Organisations-Administrator"},
     {"code": "incident_leader",      "label": "Einsatzleiter"},
     {"code": "breathing_supervisor", "label": "AS-Überwacher"},
     {"code": "recorder",             "label": "Schriftführer"},
@@ -33,12 +35,12 @@ ALARM_TYPES = [
 ]
 
 FIRE_DEPTS = [
-    {"slug": "wolfurt",   "name": "FF Wolfurt",       "color": "#b71921"},
-    {"slug": "lauterach", "name": "FF Lauterach",     "color": "#1877f2"},
-    {"slug": "schwarzach","name": "FF Schwarzach",    "color": "#8e44ad"},
-    {"slug": "bildstein", "name": "FF Bildstein",     "color": "#2e9d55"},
-    {"slug": "bregenz",   "name": "FF Bregenz-Stadt", "color": "#e67e22"},
-    {"slug": "kennelbach","name": "OF Kennelbach",    "color": "#00a6a6"},
+    {"slug": "wolfurt",   "name": "FF Wolfurt",       "color": "#b71921", "is_home_org": True},
+    {"slug": "lauterach", "name": "FF Lauterach",     "color": "#1877f2", "is_home_org": False},
+    {"slug": "schwarzach","name": "FF Schwarzach",    "color": "#8e44ad", "is_home_org": False},
+    {"slug": "bildstein", "name": "FF Bildstein",     "color": "#2e9d55", "is_home_org": False},
+    {"slug": "bregenz",   "name": "FF Bregenz-Stadt", "color": "#e67e22", "is_home_org": False},
+    {"slug": "kennelbach","name": "OF Kennelbach",    "color": "#00a6a6", "is_home_org": False},
 ]
 
 WOLFURT_VEHICLES = [

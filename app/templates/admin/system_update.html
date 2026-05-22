@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}System-Update{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>System-Update</h1>
+  <span class="badge badge-warning">Nur Systemadministratoren</span>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <dl class="info-list">
+      <dt>Aktuelle Version</dt>
+      <dd><strong>{{ version }}</strong></dd>
+    </dl>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+{% if update_result %}
+  {% if update_result.success %}
+  <div class="alert alert-success">
+    <strong>Update erfolgreich!</strong><br>
+    {{ update_result.message }}<br>
+    Dateien aktualisiert: {{ update_result.files_updated }}<br>
+    Dateien übersprungen (geschützt): {{ update_result.files_skipped }}<br>
+    Migrationen: {{ update_result.migrations_applied }}<br>
+    Server-Reload: {{ 'Ja' if update_result.server_reloaded else 'Manuell erforderlich' }}
+  </div>
+  {% else %}
+  <div class="alert alert-danger">
+    <strong>Fehler:</strong> {{ update_result.message }}
+  </div>
+  {% endif %}
+{% endif %}
+
+<div class="card">
+  <div class="card-header"><h2>Release-ZIP hochladen</h2></div>
+  <div class="card-body">
+    <p>Lade eine <code>.zip</code>-Datei hoch, die als Release verpackt wurde.
+       Das ZIP muss mindestens ein <code>app/</code>-Verzeichnis und eine
+       <code>pyproject.toml</code> enthalten.</p>
+
+    <div class="info-box mb-3">
+      <strong>Geschützte Dateien (werden nie überschrieben):</strong>
+      <ul>
+        <li><code>.env</code> – Konfiguration und Secrets</li>
+        <li><code>alembic/versions/</code> – eigene Datenbank-Migrationen</li>
+        <li><code>app/static/img/uploads/</code> – hochgeladene Logos</li>
+      </ul>
+    </div>
+
+    <form method="post" enctype="multipart/form-data"
+          onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Update läuft…'">
+      <div class="form-group">
+        <label>Release-ZIP</label>
+        <input type="file" name="release_zip" accept=".zip" required class="form-control">
+      </div>
+      <div class="form-actions mt-3">
+        <button type="submit" class="btn btn-danger">Update einspielen</button>
+        <a href="/admin/settings" class="btn btn-outline">Abbrechen</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mt-4">
+  <div class="card-header"><h2>Hinweis zum Update-Prozess</h2></div>
+  <div class="card-body text-muted">
+    <ol>
+      <li>ZIP wird serverseitig validiert (muss <code>app/</code> und <code>pyproject.toml</code> enthalten)</li>
+      <li>Dateien werden in ein temporäres Verzeichnis extrahiert</li>
+      <li>Alle nicht-geschützten Dateien werden über die bestehende Installation kopiert</li>
+      <li><code>alembic upgrade head</code> wird ausgeführt (Datenbank-Migrationen)</li>
+      <li>Gunicorn erhält SIGHUP (graceful reload – laufende Requests werden abgeschlossen)</li>
+      <li>Falls kein PID-File vorhanden: <code>systemctl restart einsatzleiter</code></li>
+    </ol>
+    <p>Empfehlung: Vor einem Update ein Datenbank-Backup erstellen.</p>
+  </div>
+</div>
+{% endblock %}

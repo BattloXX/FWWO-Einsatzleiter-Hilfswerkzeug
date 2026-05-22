@@ -1,4 +1,4 @@
-"""FastAPI application – Einsatzleiter-Hilfswerkzeug FF Wolfurt."""
+"""FastAPI application – Einsatzleiter-Hilfswerkzeug (Multi-Org) v2.0.0."""
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -12,7 +12,7 @@ from app.core.security import unsign_session
 from app.models.user import User
 
 from app.routers import auth, api_v1, ws
-from app.routers import ui_incident, ui_breathing, ui_archive, ui_admin, ui_stats, ui_push
+from app.routers import ui_incident, ui_breathing, ui_archive, ui_admin, ui_stats, ui_push, ui_settings
 
 
 @asynccontextmanager
@@ -38,8 +38,8 @@ def _bootstrap_admin() -> None:
 
 
 app = FastAPI(
-    title="Einsatzleiter-Hilfswerkzeug FF Wolfurt",
-    version="1.0.0",
+    title="Einsatzleiter-Hilfswerkzeug",
+    version="2.0.0",
     docs_url="/api/docs" if settings.DEBUG else None,
     redoc_url=None,
     lifespan=lifespan,
@@ -76,6 +76,7 @@ app.include_router(ui_archive.router)
 app.include_router(ui_admin.router)
 app.include_router(ui_stats.router)
 app.include_router(ui_push.router)
+app.include_router(ui_settings.router)
 
 
 @app.get("/favicon.ico", include_in_schema=False)

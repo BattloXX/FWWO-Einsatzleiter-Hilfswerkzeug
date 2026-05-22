@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Über diese App{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Über FWWO Einsatzleiter-Hilfswerkzeug</h1>
+</div>
+
+<div class="card mb-4" style="max-width:600px">
+  <div class="card-body">
+    <div style="display:flex;align-items:center;gap:1.5rem;margin-bottom:1.5rem">
+      <img src="/static/img/logo.png" alt="Logo" style="height:64px;object-fit:contain">
+      <div>
+        <div style="font-size:2rem;font-weight:700;color:var(--red)">v{{ version }}</div>
+        <div style="color:var(--text-muted)">Einsatzleiter-Hilfswerkzeug</div>
+      </div>
+    </div>
+
+    <dl class="info-list">
+      <dt>Version</dt>
+      <dd><strong>{{ version }}</strong></dd>
+
+      <dt>Python</dt>
+      <dd>3.14</dd>
+
+      <dt>Framework</dt>
+      <dd>FastAPI + HTMX + Alpine.js</dd>
+
+      <dt>Datenbank</dt>
+      <dd>MariaDB 10.11+ (SQLAlchemy 2.x, Alembic)</dd>
+
+      <dt>Port</dt>
+      <dd>8092</dd>
+
+      <dt>Lizenz</dt>
+      <dd>MIT – Freiwillige Feuerwehr Wolfurt</dd>
+    </dl>
+
+    <hr class="my-3">
+
+    <h3 class="mb-2">Autoren</h3>
+    <div style="display:flex;flex-direction:column;gap:.75rem">
+      <div style="display:flex;align-items:center;gap:.75rem">
+        <div class="author-avatar">JB</div>
+        <div>
+          <strong>Johannes Battlogg</strong>
+          <div style="color:var(--text-muted);font-size:.875rem">Lead-Entwicklung, Konzept &amp; Design</div>
+          <a href="https://github.com/BattloXX" target="_blank" rel="noopener" style="font-size:.8rem">github.com/BattloXX</a>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:.75rem">
+        <div class="author-avatar">RR</div>
+        <div>
+          <strong>Roman Reiter</strong>
+          <div style="color:var(--text-muted);font-size:.875rem">Fachberatung Einsatzleitung &amp; Atemschutz</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="my-3">
+
+    <h3 class="mb-2">Changelog</h3>
+    <div class="changelog">
+      <div class="version-entry">
+        <span class="version-badge">v2.0.0</span>
+        <ul>
+          <li>Multi-Organisations-Unterstützung (mehrere Wehren, gemeinsame Einsätze)</li>
+          <li>System-Admin-Rolle (organisationsübergreifend)</li>
+          <li>Zentrale Einstellungsseite (Logo, Name, Farbe)</li>
+          <li>In-App ZIP-Update-Mechanismus</li>
+          <li>Python 3.14 Kompatibilität</li>
+          <li>Port 8092</li>
+        </ul>
+      </div>
+      <div class="version-entry">
+        <span class="version-badge">v1.0.0</span>
+        <ul>
+          <li>Initiale Multi-User-Webapp (FastAPI + HTMX)</li>
+          <li>Kanban-Board mit WebSocket-Echtzeit-Sync</li>
+          <li>Atemschutzüberwachung</li>
+          <li>REST-API für Alarmierungssystem</li>
+          <li>PWA, Offline-Support, Web-Push</li>
+          <li>PDF-Export (WeasyPrint)</li>
+          <li>QR-Code-Schnellzugriff</li>
+          <li>Sprachdiktat (Web Speech API)</li>
+          <li>Übungsmodus</li>
+        </ul>
+      </div>
+    </div>
+
+    <hr class="my-3">
+
+    <p style="font-size:.875rem;color:var(--text-muted)">
+      Dieses Werkzeug wurde speziell für die Bedürfnisse der
+      Freiwilligen Feuerwehr Wolfurt entwickelt und steht allen
+      österreichischen Feuerwehren unter der MIT-Lizenz frei zur Verfügung.<br>
+      Repository:
+      <a href="https://github.com/BattloXX/FWWO-Einsatzleiter-Hilfswerkzeug" target="_blank" rel="noopener">
+        github.com/BattloXX/FWWO-Einsatzleiter-Hilfswerkzeug
+      </a>
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.author-avatar {
+  width: 40px; height: 40px;
+  background: var(--red);
+  color: white;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: .875rem;
+  flex-shrink: 0;
+}
+.changelog { display: flex; flex-direction: column; gap: 1rem; }
+.version-entry { display: flex; gap: 1rem; align-items: flex-start; }
+.version-badge {
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: monospace;
+  font-size: .85rem;
+  flex-shrink: 0;
+  margin-top: .15rem;
+}
+.version-entry ul { margin: 0; padding-left: 1.2rem; font-size: .875rem; }
+</style>
+{% endblock %}

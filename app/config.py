@@ -9,8 +9,9 @@ class Settings(BaseSettings):
     SESSION_MAX_AGE_SECONDS: int = 86400
 
     APP_HOST: str = "0.0.0.0"
-    APP_PORT: int = 8000
-    APP_BASE_URL: str = "http://localhost:8000"
+    APP_PORT: int = 8092
+    APP_BASE_URL: str = "http://localhost:8092"
+    APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
 
     VAPID_PRIVATE_KEY: str = ""

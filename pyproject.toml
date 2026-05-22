@@ -4,9 +4,9 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "fwwo-einsatzleiter"
-version = "1.0.0"
-description = "Einsatzleiter-Hilfswerkzeug Feuerwehr Wolfurt"
-requires-python = ">=3.12"
+version = "2.0.0"
+description = "Einsatzleiter-Hilfswerkzeug – Multi-Organisations-Plattform für Feuerwehren"
+requires-python = ">=3.14"
 dependencies = [
     # Web framework
     "fastapi[standard]>=0.115",
@@ -57,13 +57,13 @@ include = ["app*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

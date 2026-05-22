@@ -25,6 +25,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(150), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # org_id: which organisation this user belongs to (NULL = system_admin without org)
+    org_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("fire_dept.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -34,6 +36,18 @@ class User(Base):
     @property
     def roles(self) -> List[Role]:
         return [ur.role for ur in self.user_roles if ur.role is not None]
+
+    @property
+    def role_codes(self) -> set[str]:
+        return {r.code for r in self.roles}
+
+    @property
+    def is_system_admin(self) -> bool:
+        return "system_admin" in self.role_codes
+
+    @property
+    def is_org_admin(self) -> bool:
+        return bool(self.role_codes & {"system_admin", "admin", "org_admin"})
 
 
 class UserRole(Base):
@@ -52,6 +66,7 @@ class ApiKey(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     key_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     label: Mapped[str] = mapped_column(String(150), nullable=False)
+    org_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("fire_dept.id"), nullable=True)
     created_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

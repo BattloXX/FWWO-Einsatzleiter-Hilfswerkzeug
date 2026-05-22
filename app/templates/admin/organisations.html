@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Organisationen{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Organisationen</h1>
+  <a href="#new-org" class="btn btn-primary">+ Neue Organisation</a>
+</div>
+
+{% if request.query_params.get('created') %}
+<div class="alert alert-success">Organisation angelegt.</div>
+{% endif %}
+{% if request.query_params.get('error') == 'slug_exists' %}
+<div class="alert alert-danger">Ein Kürzel mit diesem Namen existiert bereits.</div>
+{% endif %}
+
+<div class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Farbe</th>
+        <th>Name</th>
+        <th>Kürzel</th>
+        <th>Kontakt</th>
+        <th>Status</th>
+        <th>Typ</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for org in orgs %}
+      <tr>
+        <td><span class="org-color-dot" style="background:{{ org.color }}"></span></td>
+        <td>
+          {% if org.logo_path %}<img src="{{ org.logo_path }}" alt="" style="height:24px;margin-right:6px">{% endif %}
+          <strong>{{ org.name }}</strong>
+        </td>
+        <td><code>{{ org.slug }}</code></td>
+        <td>{{ org.contact_email or '–' }}</td>
+        <td>
+          {% if org.is_active %}
+          <span class="badge badge-success">Aktiv</span>
+          {% else %}
+          <span class="badge badge-danger">Inaktiv</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if org.is_home_org %}<span class="badge badge-primary">Heimwehr</span>{% else %}
+          <span class="badge badge-secondary">Partner</span>{% endif %}
+        </td>
+        <td>
+          {% if not org.is_home_org %}
+          <form method="post" action="/admin/organisations/{{ org.id }}/toggle" style="display:inline">
+            <button type="submit" class="btn btn-sm btn-outline">
+              {% if org.is_active %}Deaktivieren{% else %}Aktivieren{% endif %}
+            </button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<section class="card mt-4" id="new-org">
+  <div class="card-header"><h2>Neue Organisation anlegen</h2></div>
+  <div class="card-body">
+    <form method="post" action="/admin/organisations/new">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Kürzel (slug, z.B. <code>lauterach</code>)</label>
+          <input type="text" name="slug" required pattern="[a-z0-9\-]+"
+                 placeholder="lauterach" class="form-control">
+          <small>Nur Kleinbuchstaben, Ziffern und Bindestriche</small>
+        </div>
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" required placeholder="FF Lauterach" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Farbe</label>
+          <input type="color" name="color" value="#1877f2" class="form-control" style="width:60px;height:40px;padding:2px">
+        </div>
+        <div class="form-group">
+          <label>Kontakt E-Mail (optional)</label>
+          <input type="email" name="contact_email" class="form-control">
+        </div>
+      </div>
+      <div class="form-actions mt-3">
+        <button type="submit" class="btn btn-primary">Organisation anlegen</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

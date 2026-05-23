@@ -7,19 +7,32 @@
     <button class="btn btn--primary" onclick="document.getElementById('newQualModal').showModal()">+ Qualifikation</button>
   </div>
   {% if saved %}<div class="alert alert--success">Gespeichert.</div>{% endif %}
+  {% if request.query_params.get('error') == 'in_use' %}
+  <div class="alert alert--danger">
+    Qualifikation „{{ request.query_params.get('code', '') }}" wird noch bei Mitgliedern verwendet und kann nicht gelöscht werden.
+  </div>
+  {% endif %}
   <table class="table-admin">
-    <thead><tr><th>Code</th><th>Bezeichnung</th><th>Aktionen</th></tr></thead>
+    <thead><tr><th>Code</th><th>Bezeichnung</th><th>Verwendet</th><th>Aktionen</th></tr></thead>
     <tbody>
       {% for q in qualifications %}
+      {% set member_count = usage.get(q.id, 0) %}
       <tr>
         <td><strong>{{ q.code }}</strong></td>
         <td>{{ q.label }}</td>
         <td>
+          {% if member_count > 0 %}
+          <span class="badge-pill badge-pill--green">{{ member_count }} Mitglied{{ 'er' if member_count != 1 else '' }}</span>
+          {% else %}
+          <span class="text-muted">–</span>
+          {% endif %}
+        </td>
+        <td>
           <button class="btn btn--ghost btn--xs"
                   onclick="openEditQual({{ q.id }}, '{{ q.code }}', '{{ q.label|replace("'","\\'")|e }}')">Bearbeiten</button>
           <form method="post" action="/admin/qualifikationen/{{ q.id }}/loeschen" style="display:inline"
-                onsubmit="return confirm('Löschen?')">
-            <button type="submit" class="btn btn--danger btn--xs">Löschen</button>
+                onsubmit="return confirm('Qualifikation {{ q.code }} löschen?{% if member_count > 0 %} Achtung: bei {{ member_count }} Mitglied(ern) zugewiesen!{% endif %}')">
+            <button type="submit" class="btn btn--danger btn--xs" {% if member_count > 0 %}title="Wird bei {{ member_count }} Mitglied(ern) verwendet"{% endif %}>Löschen</button>
           </form>
         </td>
       </tr>

@@ -41,10 +41,11 @@
         <div class="nav-dropdown__menu" x-show="open" x-cloak>
           <div class="nav-dropdown__group">
             <span class="nav-dropdown__label">Stammdaten</span>
-            <a href="/admin/fahrzeuge" class="nav-dropdown__item">Fahrzeuge</a>
+            <a href="/admin/fahrzeuge" class="nav-dropdown__item">Einheiten</a>
             <a href="/admin/mitglieder" class="nav-dropdown__item">Mitglieder</a>
             <a href="/admin/qualifikationen" class="nav-dropdown__item">Qualifikationen</a>
             <a href="/admin/auftragsvorlagen" class="nav-dropdown__item">Auftragsvorlagen</a>
+            <a href="/admin/meldungsvorlagen" class="nav-dropdown__item">Meldungsvorlagen</a>
             <a href="/admin/alarmtypen" class="nav-dropdown__item">Alarmtypen</a>
             <a href="/admin/ausrueckordnung" class="nav-dropdown__item">Ausrückordnung</a>
             <a href="/admin/lage-hinweise" class="nav-dropdown__item">Lage-Hinweise</a>
@@ -69,6 +70,42 @@
       </div>
       {% endif %}
     </div>
+    {% if incident is defined and incident and leader_candidates is defined %}
+    <div class="topnav__leader" x-data="{open:false}" @click.outside="open=false" style="position:relative;">
+      <button type="button" class="nav-link nav-link--dropdown topnav__leader-btn"
+              @click="open=!open"
+              title="Aktuellen Einsatzleiter anzeigen oder wechseln">
+        <span style="font-size:.75rem; opacity:.7; margin-right:2px;">EL</span>
+        <span>{{ incident.leader.display_name if incident.leader else '— kein EL —' }}</span>
+        <span style="font-size:.7rem; opacity:.7; margin-left:2px;">▾</span>
+      </button>
+      <div x-show="open" x-cloak
+           style="position:absolute; top:calc(100% + 4px); right:0; z-index:200;
+                  background:var(--surface-mid); border:1px solid var(--border); border-radius:.5rem;
+                  min-width:200px; padding:8px 0; box-shadow:0 12px 32px rgba(0,0,0,.5);">
+        <div style="padding:4px 14px 8px; font-size:.7rem; font-weight:700; letter-spacing:.08em;
+                    color:var(--text-muted); text-transform:uppercase; border-bottom:1px solid var(--border); margin-bottom:4px;">
+          Einsatzleiter wechseln
+        </div>
+        {% for candidate in leader_candidates %}
+        <form method="post" action="/einsatz/{{ incident.id }}/einsatzleiter" style="display:block;">
+          <input type="hidden" name="user_id" value="{{ candidate.id }}">
+          <button type="submit"
+                  style="display:block; width:100%; text-align:left; padding:7px 16px;
+                         background:{% if incident.incident_leader_user_id == candidate.id %}rgba(183,25,33,.15){% else %}none{% endif %};
+                         color:{% if incident.incident_leader_user_id == candidate.id %}var(--red-light){% else %}var(--on-surface){% endif %};
+                         border:none; cursor:pointer; font-size:.88rem; transition:background .15s;"
+                  onmouseover="this.style.background='var(--surface-high)'"
+                  onmouseout="this.style.background='{% if incident.incident_leader_user_id == candidate.id %}rgba(183,25,33,.15){% else %}none{% endif %}'">
+            {% if incident.incident_leader_user_id == candidate.id %}✓ {% endif %}{{ candidate.display_name }}
+          </button>
+        </form>
+        {% else %}
+        <div style="padding:8px 16px; font-size:.85rem; color:var(--text-muted);">Keine Kandidaten verfügbar</div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
     <div class="topnav__user">
       <span class="user-badge">{{ user.display_name }}</span>
       <a href="/logout" class="btn btn--ghost btn--sm">Abmelden</a>

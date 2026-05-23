@@ -35,12 +35,12 @@ ALARM_TYPES = [
 ]
 
 FIRE_DEPTS = [
-    {"slug": "wolfurt",   "name": "FF Wolfurt",       "color": "#b71921", "is_home_org": True},
-    {"slug": "lauterach", "name": "FF Lauterach",     "color": "#1877f2", "is_home_org": False},
-    {"slug": "schwarzach","name": "FF Schwarzach",    "color": "#8e44ad", "is_home_org": False},
-    {"slug": "bildstein", "name": "FF Bildstein",     "color": "#2e9d55", "is_home_org": False},
-    {"slug": "bregenz",   "name": "FF Bregenz-Stadt", "color": "#e67e22", "is_home_org": False},
-    {"slug": "kennelbach","name": "OF Kennelbach",    "color": "#00a6a6", "is_home_org": False},
+    {"slug": "wolfurt",   "name": "FF Wolfurt",       "color": "#b71921", "is_home_org": True,  "bos": "Feuerwehr"},
+    {"slug": "lauterach", "name": "FF Lauterach",     "color": "#1877f2", "is_home_org": False, "bos": "Feuerwehr"},
+    {"slug": "schwarzach","name": "FF Schwarzach",    "color": "#8e44ad", "is_home_org": False, "bos": "Feuerwehr"},
+    {"slug": "bildstein", "name": "FF Bildstein",     "color": "#2e9d55", "is_home_org": False, "bos": "Feuerwehr"},
+    {"slug": "bregenz",   "name": "FF Bregenz-Stadt", "color": "#e67e22", "is_home_org": False, "bos": "Feuerwehr"},
+    {"slug": "kennelbach","name": "OF Kennelbach",    "color": "#00a6a6", "is_home_org": False, "bos": "Feuerwehr"},
 ]
 
 WOLFURT_VEHICLES = [
@@ -160,6 +160,7 @@ LAGE_HINTS = [
 
 QUALIFICATIONS = [
     {"code": "AGT",  "label": "Atemschutzgeräteträger"},
+    {"code": "ATF",  "label": "Atemschutz-Truppführer"},
     {"code": "MA",   "label": "Maschinist"},
     {"code": "GK",   "label": "Gruppenkommandant"},
     {"code": "ZK",   "label": "Zugskommandant"},

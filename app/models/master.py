@@ -7,6 +7,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 
+BOS_VALUES = ["Feuerwehr", "Rotes Kreuz", "Polizei", "Bauhof", "Privat"]
+
+
 class FireDept(Base):
     """Organisation / Feuerwehr. Dient gleichzeitig als vollständige multi-org Entität."""
     __tablename__ = "fire_dept"
@@ -15,6 +18,7 @@ class FireDept(Base):
     slug: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     color: Mapped[str] = mapped_column(String(7), nullable=False, default="#b71921")
+    bos: Mapped[str] = mapped_column(String(20), nullable=False, default="Feuerwehr")
     withdraw_press_factor: Mapped[float] = mapped_column(default=0.5)
     withdraw_press_reserve: Mapped[int] = mapped_column(Integer, default=10)
 
@@ -50,8 +54,13 @@ class VehicleMaster(Base):
     is_first_train: Mapped[bool] = mapped_column(Boolean, default=False)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    bos_override: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     dept: Mapped["FireDept"] = relationship(back_populates="vehicles")
+
+    @property
+    def effective_bos(self) -> str:
+        return self.bos_override or (self.dept.bos if self.dept else "Feuerwehr")
 
 
 class Qualification(Base):
@@ -112,6 +121,15 @@ class AlarmType(Base):
 
 class TaskSuggestion(Base):
     __tablename__ = "task_suggestion"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    alarm_type_code: Mapped[str] = mapped_column(String(10), ForeignKey("alarm_type.code"), nullable=False)
+    text: Mapped[str] = mapped_column(String(500), nullable=False)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class MessageSuggestion(Base):
+    __tablename__ = "message_suggestion"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     alarm_type_code: Mapped[str] = mapped_column(String(10), ForeignKey("alarm_type.code"), nullable=False)

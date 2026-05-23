@@ -7,7 +7,23 @@
      hx-on::after-swap="document.getElementById('cardDetailModal').showModal()"
      style="cursor:pointer">
   <div class="card__body">
-    <div class="card__title">{{ task.title }}</div>
+    <div class="card__title" style="display:flex;align-items:center;gap:6px;">
+      {% if can_edit %}
+      <span style="display:inline-flex;gap:3px;flex-shrink:0;" onclick="event.stopPropagation()">
+        {% set sl = task.status if task.status else 'open' %}
+        <button title="Offen" style="width:12px;height:12px;border-radius:50%;border:none;cursor:pointer;background:{% if sl=='open' %}#e53935{% else %}rgba(255,255,255,.15){% endif %};"
+                hx-post="/einsatz/{{ incident.id }}/aufgabe/{{ task.id }}/ampel"
+                hx-vals='{"status":"open"}' hx-swap="none"></button>
+        <button title="In Arbeit" style="width:12px;height:12px;border-radius:50%;border:none;cursor:pointer;background:{% if sl=='in_progress' %}#f9a825{% else %}rgba(255,255,255,.15){% endif %};"
+                hx-post="/einsatz/{{ incident.id }}/aufgabe/{{ task.id }}/ampel"
+                hx-vals='{"status":"in_progress"}' hx-swap="none"></button>
+        <button title="Erledigt" style="width:12px;height:12px;border-radius:50%;border:none;cursor:pointer;background:{% if sl=='done' %}#43a047{% else %}rgba(255,255,255,.15){% endif %};"
+                hx-post="/einsatz/{{ incident.id }}/aufgabe/{{ task.id }}/ampel"
+                hx-vals='{"status":"done"}' hx-swap="none"></button>
+      </span>
+      {% endif %}
+      {{ task.title }}
+    </div>
     {% if task.detail %}<div class="card__sub">{{ task.detail }}</div>{% endif %}
     <div class="card__meta">
       <span class="card__time">{{ task.created_at|local_time }}</span>
@@ -15,12 +31,9 @@
   </div>
   {% if can_edit and not task.is_done %}
   <div class="card__footer">
-    <button class="btn btn--xs btn--ghost"
-            hx-post="/einsatz/{{ incident.id }}/aufgabe/{{ task.id }}/erledigt"
-            hx-swap="none">✓ Erledigt</button>
     <select class="form-select form-select--xs"
             onchange="assignTask({{ task.id }}, this.value, {{ incident.id }})">
-      <option value="">Fahrzeug zuweisen...</option>
+      <option value="">Einheit zuweisen...</option>
       {% for v in incident.vehicles %}
       {% if v.removed_at is none %}
       <option value="{{ v.id }}">{{ v.vehicle_master.code }}</option>

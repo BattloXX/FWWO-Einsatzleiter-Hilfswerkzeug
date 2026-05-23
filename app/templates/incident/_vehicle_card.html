@@ -10,10 +10,27 @@
     <div class="card__title">
       {{ vehicle.vehicle_master.code }}
       <span class="card__org">{{ vehicle.vehicle_master.dept.name }}</span>
+      {% set bos = vehicle.vehicle_master.effective_bos %}
+      {% if bos and bos != 'Feuerwehr' %}
+      <span class="badge badge--bos" style="font-size:.65rem; padding:1px 5px; border-radius:3px; background:rgba(255,255,255,.12); margin-left:4px;">{{ bos }}</span>
+      {% endif %}
     </div>
     <div class="card__sub">{{ vehicle.vehicle_master.type }}</div>
     {% if vehicle.commander %}
     <div class="card__gk">GK: {{ vehicle.commander.full_name }}</div>
+    {% endif %}
+    {% if can_edit and unit_status_values is defined %}
+    <div style="margin-top:4px;" onclick="event.stopPropagation()">
+      <select class="form-select form-select--xs"
+              hx-post="/einsatz/{{ incident.id }}/fahrzeug/{{ vehicle.id }}/status"
+              hx-trigger="change"
+              hx-swap="none"
+              name="unit_status">
+        {% for s in unit_status_values %}
+        <option value="{{ s }}" {% if vehicle.unit_status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
     {% endif %}
     {% if vehicle.assigned_tasks %}
     <div class="card__tasks sortable-zone sortable-zone--vehicle" data-vehicle-id="{{ vehicle.id }}">

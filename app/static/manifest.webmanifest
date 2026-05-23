@@ -1,10 +1,10 @@
 {
-  "name": "Einsatzleiter FF Wolfurt",
+  "name": "einsatzleiter.cloud",
   "short_name": "Einsatzleiter",
-  "description": "Einsatzleiter-Hilfswerkzeug der Feuerwehr Wolfurt",
+  "description": "Einsatzleiter-Hilfswerkzeug fuer Feuerwehr-Einsatzleitung",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#11131a",
+  "background_color": "#0b1326",
   "theme_color": "#b71921",
   "orientation": "any",
   "icons": [

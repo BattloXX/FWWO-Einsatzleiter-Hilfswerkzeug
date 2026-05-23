@@ -15,6 +15,7 @@ from app.models.user import User, Role, UserRole, ApiKey, AuditLog
 from app.models.master import (
     Member, Qualification, MemberQualification, FireDept, VehicleMaster,
     AlarmType, TaskSuggestion, LageHint, DefaultMessage, AlarmDispatchVehicle, SystemSettings,
+    BOS_VALUES, MessageSuggestion,
 )
 
 router = APIRouter(prefix="/admin")
@@ -414,6 +415,12 @@ async def reset_user_password(
 
 # ── Fahrzeuge CRUD ────────────────────────────────────────────────────────────
 
+@router.get("/einheiten", response_class=HTMLResponse, include_in_schema=False)
+async def vehicles_list_alias(request: Request, db: Session = Depends(get_db),
+                              _=Depends(require_role("admin", "org_admin"))):
+    return RedirectResponse("/admin/fahrzeuge", status_code=301)
+
+
 @router.get("/fahrzeuge", response_class=HTMLResponse)
 async def vehicles_list(request: Request, db: Session = Depends(get_db),
                         _=Depends(require_role("admin", "org_admin"))):
@@ -432,6 +439,7 @@ async def vehicles_list(request: Request, db: Session = Depends(get_db),
     return templates.TemplateResponse(request, "admin/vehicles.html", {
         "user": user, "vehicles": vehicles, "all_orgs": all_orgs,
         "is_sysadmin": is_sysadmin, "saved": saved, "error": error,
+        "bos_values": BOS_VALUES,
     })
 
 
@@ -440,6 +448,7 @@ async def create_vehicle(
     request: Request,
     code: str = Form(...), name: str = Form(...), type: str = Form(""),
     is_first_train: str = Form(""),
+    bos_override: str = Form(""),
     dept_id: Optional[int] = Form(None),
     db: Session = Depends(get_db), _=Depends(require_role("admin", "org_admin")),
 ):
@@ -455,6 +464,7 @@ async def create_vehicle(
     v = VehicleMaster(
         dept_id=target_dept_id, code=code, name=name, type=type,
         is_first_train=bool(is_first_train),
+        bos_override=bos_override or None,
         display_order=max_order,
     )
     db.add(v)
@@ -469,6 +479,7 @@ async def edit_vehicle(
     vehicle_id: int, request: Request,
     code: str = Form(...), name: str = Form(...), type: str = Form(""),
     is_first_train: str = Form(""),
+    bos_override: str = Form(""),
     db: Session = Depends(get_db), _=Depends(require_role("admin", "org_admin")),
 ):
     v = db.get(VehicleMaster, vehicle_id)
@@ -477,6 +488,7 @@ async def edit_vehicle(
         v.name = name
         v.type = type
         v.is_first_train = bool(is_first_train)
+        v.bos_override = bos_override or None
         write_audit(db, "admin.vehicle.edited", user_id=request.state.user.id,
                     entity_type="vehicle_master", entity_id=vehicle_id)
         db.commit()
@@ -605,6 +617,65 @@ async def reorder_task_suggestion(
             )
             db.commit()
     return RedirectResponse("/admin/auftragsvorlagen", status_code=303)
+
+
+# ── Meldungsvorlagen CRUD ─────────────────────────────────────────────────────
+
+@router.get("/meldungsvorlagen", response_class=HTMLResponse)
+async def msg_suggestions_list(request: Request, db: Session = Depends(get_db),
+                               _=Depends(require_role("admin", "org_admin"))):
+    alarm_types = db.query(AlarmType).order_by(AlarmType.code).all()
+    suggestions = db.query(MessageSuggestion).order_by(
+        MessageSuggestion.alarm_type_code, MessageSuggestion.display_order
+    ).all()
+    sugg_by_code: dict = {}
+    for s in suggestions:
+        sugg_by_code.setdefault(s.alarm_type_code, []).append(s)
+    by_alarm_type = [(at, sugg_by_code.get(at.code, [])) for at in alarm_types]
+    saved = request.query_params.get("saved")
+    return templates.TemplateResponse(request, "admin/message_suggestions.html", {
+        "user": request.state.user, "alarm_types": alarm_types,
+        "by_alarm_type": by_alarm_type, "saved": saved,
+    })
+
+
+@router.post("/meldungsvorlagen/neu")
+async def create_msg_suggestion(
+    request: Request,
+    alarm_type_code: str = Form(...), text: str = Form(...),
+    db: Session = Depends(get_db), _=Depends(require_role("admin", "org_admin")),
+):
+    max_order = db.query(MessageSuggestion).filter(
+        MessageSuggestion.alarm_type_code == alarm_type_code
+    ).count()
+    s = MessageSuggestion(alarm_type_code=alarm_type_code, text=text, display_order=max_order)
+    db.add(s)
+    db.commit()
+    return RedirectResponse("/admin/meldungsvorlagen?saved=1", status_code=303)
+
+
+@router.post("/meldungsvorlagen/{sid}/edit")
+async def edit_msg_suggestion(
+    sid: int, request: Request, text: str = Form(...),
+    db: Session = Depends(get_db), _=Depends(require_role("admin", "org_admin")),
+):
+    s = db.get(MessageSuggestion, sid)
+    if s:
+        s.text = text
+        db.commit()
+    return RedirectResponse("/admin/meldungsvorlagen?saved=1", status_code=303)
+
+
+@router.post("/meldungsvorlagen/{sid}/loeschen")
+async def delete_msg_suggestion(
+    sid: int, request: Request, db: Session = Depends(get_db),
+    _=Depends(require_role("admin", "org_admin")),
+):
+    s = db.get(MessageSuggestion, sid)
+    if s:
+        db.delete(s)
+        db.commit()
+    return RedirectResponse("/admin/meldungsvorlagen", status_code=303)
 
 
 # ── Alarmtypen CRUD ───────────────────────────────────────────────────────────
@@ -750,9 +821,16 @@ async def reset_dispatch_order(
 async def qualifications_list(request: Request, db: Session = Depends(get_db),
                               _=Depends(require_role("admin"))):
     qualifications = db.query(Qualification).order_by(Qualification.code).all()
+    from sqlalchemy import func as sqlfunc
+    usage = dict(
+        db.query(MemberQualification.qualification_id, sqlfunc.count(MemberQualification.member_id))
+        .group_by(MemberQualification.qualification_id)
+        .all()
+    )
     saved = request.query_params.get("saved")
     return templates.TemplateResponse(request, "admin/qualifications.html", {
-        "user": request.state.user, "qualifications": qualifications, "saved": saved,
+        "user": request.state.user, "qualifications": qualifications,
+        "usage": usage, "saved": saved,
     })
 
 
@@ -787,6 +865,9 @@ async def delete_qualification(
 ):
     q = db.get(Qualification, qid)
     if q:
+        in_use = db.query(MemberQualification).filter(MemberQualification.qualification_id == qid).count()
+        if in_use:
+            return RedirectResponse(f"/admin/qualifikationen?error=in_use&code={q.code}", status_code=303)
         db.delete(q)
         db.commit()
     return RedirectResponse("/admin/qualifikationen", status_code=303)

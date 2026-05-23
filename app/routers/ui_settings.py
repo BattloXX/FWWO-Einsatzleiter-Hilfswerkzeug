@@ -12,7 +12,7 @@ from app.core.permissions import has_role, require_role, require_system_admin
 from app.core.templating import templates
 from app.core.timezones import common_timezones
 from app.db import get_db
-from app.models.master import FireDept, OrgSettings, SystemSettings
+from app.models.master import FireDept, OrgSettings, SystemSettings, BOS_VALUES
 from app.models.user import User
 from app.services.update_service import apply_update, get_current_version
 
@@ -201,6 +201,7 @@ def organisations_page(request: Request, db=Depends(get_db), user: User = Depend
     return templates.TemplateResponse(request, "admin/organisations.html", {
         "user": user,
         "orgs": orgs,
+        "bos_values": BOS_VALUES,
     })
 
 
@@ -212,6 +213,7 @@ async def create_organisation(
     slug: str = Form(...),
     name: str = Form(...),
     color: str = Form("#b71921"),
+    bos: str = Form("Feuerwehr"),
     contact_email: str = Form(""),
 ):
     existing = db.query(FireDept).filter(FireDept.slug == slug).first()
@@ -221,6 +223,7 @@ async def create_organisation(
         slug=slug,
         name=name,
         color=color,
+        bos=bos if bos in BOS_VALUES else "Feuerwehr",
         contact_email=contact_email or None,
         is_home_org=False,
         is_active=True,

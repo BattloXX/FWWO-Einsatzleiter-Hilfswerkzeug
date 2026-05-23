@@ -1,5 +1,6 @@
 /* Service Worker – PWA Offline Cache */
-const CACHE = 'fwwo-v1';
+const CACHE = 'fwwo-v2';
+const BOARD_CACHE = 'fwwo-board-v1';
 const PRECACHE = [
   '/',
   '/static/css/app.css',
@@ -20,7 +21,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE && k !== BOARD_CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -29,16 +30,69 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   // Never intercept WebSocket or API calls
   if (url.pathname.startsWith('/ws/') || url.pathname.startsWith('/api/')) return;
-  // Network-first for HTML pages, cache-first for static assets
-  if (e.request.destination === 'document' || url.pathname === '/') {
+
+  // Block mutating requests offline — return 503 with X-Offline header
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(e.request.method)) {
     e.respondWith(
-      fetch(e.request).catch(() => caches.match(e.request))
+      fetch(e.request).catch(() =>
+        new Response('Offline', {
+          status: 503,
+          headers: { 'X-Offline': '1', 'Content-Type': 'text/plain' },
+        })
+      )
     );
-  } else {
-    e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request))
-    );
+    return;
   }
+
+  // Board pages (/einsatz/<id>) — network-first, cache last successful response
+  if (/^\/einsatz\/\d+$/.test(url.pathname)) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(BOARD_CACHE).then(c => c.put(e.request, clone));
+          }
+          return res;
+        })
+        .catch(async () => {
+          const cached = await caches.match(e.request, { cacheName: BOARD_CACHE });
+          if (cached) {
+            // Inject offline banner into the cached HTML response
+            const html = await cached.text();
+            const banner = `<div id="offline-banner" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#b71921;color:#fff;text-align:center;padding:6px 12px;font-size:.85rem;">
+              Offline-Modus — zuletzt synchronisiert: ${new Date(cached.headers.get('date') || Date.now()).toLocaleString('de-AT')}
+            </div>`;
+            const patched = html.replace('<body', `${banner}<body`);
+            return new Response(patched, {
+              status: 200,
+              headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Offline': '1' },
+            });
+          }
+          return caches.match('/') || new Response('Offline', { status: 503 });
+        })
+    );
+    return;
+  }
+
+  // Static assets — cache-first
+  if (url.pathname.startsWith('/static/')) {
+    e.respondWith(
+      caches.match(e.request).then(r => r || fetch(e.request).then(res => {
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return res;
+      }))
+    );
+    return;
+  }
+
+  // Everything else — network-first, fall back to cache
+  e.respondWith(
+    fetch(e.request).catch(() => caches.match(e.request))
+  );
 });
 
 // Push notification handler

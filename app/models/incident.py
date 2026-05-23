@@ -8,6 +8,13 @@ from app.db import Base
 
 # Fixed column codes (always present)
 FIXED_COLUMNS = ["dispatched", "active", "tasks", "messages", "neighbor", "rescued"]
+UNIT_STATUS_VALUES = [
+    "Einsatz übernommen",
+    "Am Einsatzort",
+    "Einsatzbereit",
+    "Einsatzbereit am Stützpunkt",
+]
+TRAFFIC_LIGHT_VALUES = ["open", "in_progress", "done"]
 FIXED_COLUMN_TITLES = {
     "dispatched": "Disponierte Fahrzeuge",
     "active":     "Tatsächlich im Einsatz",
@@ -55,6 +62,9 @@ class Incident(Base):
     breathing_troops: Mapped[List["BreathingTroop"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
     tokens: Mapped[List["IncidentToken"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
     collaborating_orgs: Mapped[List["IncidentOrg"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+    leader: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[incident_leader_user_id], lazy="joined"
+    )
 
 
 class IncidentOrg(Base):
@@ -103,6 +113,7 @@ class IncidentVehicle(Base):
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     removed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     org_color_override: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
+    unit_status: Mapped[str] = mapped_column(String(40), nullable=False, default="Einsatz übernommen")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     incident: Mapped["Incident"] = relationship(back_populates="vehicles")
@@ -138,6 +149,7 @@ class Task(Base):
     vehicle_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("incident_vehicle.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     is_done: Mapped[bool] = mapped_column(Boolean, default=False)
     done_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -204,11 +216,13 @@ class Message(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     incident_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False)
+    vehicle_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("incident_vehicle.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     due_after_sec: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     due_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     popup_shown: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     is_done: Mapped[bool] = mapped_column(Boolean, default=False)
     done_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -216,6 +230,7 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     incident: Mapped["Incident"] = relationship(back_populates="messages")
+    vehicle: Mapped[Optional["IncidentVehicle"]] = relationship(foreign_keys=[vehicle_id])
 
 
 class RescuedPerson(Base):

@@ -10,14 +10,15 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.core.permissions import require_role, has_role
 from app.core.templating import templates
-from app.models.incident import Incident, IncidentColumn, IncidentVehicle, Task, Message, RescuedPerson, IncidentToken
-from app.models.master import AlarmType, TaskSuggestion, LageHint, VehicleMaster
+from app.models.incident import Incident, IncidentColumn, IncidentVehicle, Task, Message, RescuedPerson, IncidentToken, UNIT_STATUS_VALUES, TRAFFIC_LIGHT_VALUES
+from app.models.master import AlarmType, TaskSuggestion, LageHint, VehicleMaster, Member, BOS_VALUES, MessageSuggestion
+from app.models.user import User, UserRole, Role
 from app.services.incident_service import (
     create_incident, add_task, assign_task_to_vehicle, move_vehicle_to_column,
     close_incident, add_section_column, set_commander, quick_create_commander,
-    update_task, cancel_task, move_card,
+    update_task, cancel_task, move_card, set_unit_status, list_commander_candidates,
+    set_task_status, set_message_status,
 )
-from app.models.master import Member
 from app.services.broadcast import manager
 from app.core.security import sign_qr_token, hash_api_key
 import qrcode
@@ -99,12 +100,54 @@ async def incident_board(incident_id: int, request: Request, db: Session = Depen
     task_suggestions = db.query(TaskSuggestion).filter(
         TaskSuggestion.alarm_type_code == incident.alarm_type_code
     ).order_by(TaskSuggestion.display_order).all()
+    msg_suggestions = db.query(MessageSuggestion).filter(
+        MessageSuggestion.alarm_type_code == incident.alarm_type_code
+    ).order_by(MessageSuggestion.display_order).all()
     can_edit = has_role(user, "incident_leader", "admin", "recorder")
+    # Leader candidates: active users of same org with relevant roles
+    leader_roles = {"incident_leader", "admin", "org_admin", "system_admin"}
+    leader_candidates = (
+        db.query(User)
+        .join(UserRole, User.id == UserRole.user_id)
+        .join(Role, UserRole.role_id == Role.id)
+        .filter(
+            User.active == True,
+            User.org_id == incident.primary_org_id if incident.primary_org_id else True,
+            Role.code.in_(leader_roles),
+        )
+        .distinct()
+        .order_by(User.display_name)
+        .all()
+    )
     return templates.TemplateResponse(request, "incident/board.html", {
         "user": user, "incident": incident,
         "alarm_types": alarm_types, "lage_hints": lage_hints,
-        "task_suggestions": task_suggestions, "can_edit": can_edit,
+        "task_suggestions": task_suggestions, "msg_suggestions": msg_suggestions,
+        "can_edit": can_edit, "leader_candidates": leader_candidates,
+        "unit_status_values": UNIT_STATUS_VALUES,
     })
+
+
+# ── Einsatzleiter wechseln ────────────────────────────────────────────────────
+
+@router.post("/einsatz/{incident_id}/einsatzleiter")
+async def set_incident_leader(
+    incident_id: int, request: Request,
+    user_id: int = Form(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin")),
+):
+    incident = _incident_or_404(incident_id, db)
+    leader = db.get(User, user_id)
+    if leader and leader.active:
+        incident.incident_leader_user_id = leader.id
+        db.commit()
+        await manager.broadcast(incident_id, {
+            "type": "incident_leader_changed",
+            "leader_id": leader.id,
+            "leader_name": leader.display_name,
+        })
+    return Response(status_code=204)
 
 
 # ── Aufgaben ───────────────────────────────────────────────────────────────────
@@ -113,11 +156,12 @@ async def incident_board(incident_id: int, request: Request, db: Session = Depen
 async def create_task(
     incident_id: int, request: Request,
     title: str = Form(...), detail: str = Form(""),
+    column_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     _=Depends(require_role("incident_leader", "admin", "recorder")),
 ):
     incident = _incident_or_404(incident_id, db)
-    task = add_task(db, incident, title, detail or None, user_id=request.state.user.id)
+    task = add_task(db, incident, title, detail or None, user_id=request.state.user.id, column_id=column_id)
     db.commit()
     await manager.broadcast(incident_id, {
         "type": "task_created", "task_id": task.id, "reload_board": True,
@@ -138,6 +182,25 @@ async def toggle_task_done(
         return Response(status_code=404)
     task.is_done = not task.is_done
     task.done_at = datetime.now(timezone.utc) if task.is_done else None
+    db.commit()
+    await manager.broadcast(incident_id, {"type": "task_updated", "task_id": task_id, "reload_board": True})
+    return Response(status_code=204)
+
+
+@router.post("/einsatz/{incident_id}/aufgabe/{task_id}/ampel")
+async def set_task_ampel(
+    incident_id: int, task_id: int, request: Request,
+    status: str = Form(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    task = db.get(Task, task_id)
+    if not task:
+        return Response(status_code=404)
+    try:
+        set_task_status(db, task, status, user_id=request.state.user.id)
+    except ValueError:
+        return Response(status_code=422)
     db.commit()
     await manager.broadcast(incident_id, {"type": "task_updated", "task_id": task_id, "reload_board": True})
     return Response(status_code=204)
@@ -323,6 +386,7 @@ async def create_message(
     incident_id: int, request: Request,
     title: str = Form(...), detail: str = Form(""),
     due_after_min: int = Form(0),
+    vehicle_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     _=Depends(require_role("incident_leader", "admin", "recorder")),
 ):
@@ -335,6 +399,7 @@ async def create_message(
     msg = Message(
         incident_id=incident_id, title=title, detail=detail or None,
         due_after_sec=due_sec, due_at=due_at,
+        vehicle_id=vehicle_id or None,
     )
     db.add(msg)
     db.commit()
@@ -352,6 +417,25 @@ async def toggle_message(
         return Response(status_code=404)
     msg.is_done = not msg.is_done
     msg.done_at = datetime.now(timezone.utc) if msg.is_done else None
+    db.commit()
+    await manager.broadcast(incident_id, {"type": "message_updated", "reload_board": True})
+    return Response(status_code=204)
+
+
+@router.post("/einsatz/{incident_id}/meldung/{msg_id}/ampel")
+async def set_message_ampel(
+    incident_id: int, msg_id: int, request: Request,
+    status: str = Form(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    msg = db.get(Message, msg_id)
+    if not msg:
+        return Response(status_code=404)
+    try:
+        set_message_status(db, msg, status, user_id=request.state.user.id)
+    except ValueError:
+        return Response(status_code=422)
     db.commit()
     await manager.broadcast(incident_id, {"type": "message_updated", "reload_board": True})
     return Response(status_code=204)
@@ -512,12 +596,16 @@ async def vehicle_detail(
     incident = _incident_or_404(incident_id, db)
 
     dept_id = vehicle.vehicle_master.dept_id if vehicle.vehicle_master else None
-    members = (
-        db.query(Member)
-        .filter(Member.org_id == dept_id, Member.active == True)  # noqa: E712
-        .order_by(Member.lastname, Member.firstname)
-        .all()
-    ) if dept_id else []
+    org_ids = [dept_id] if dept_id else []
+    commander_candidates = list_commander_candidates(db, org_ids)
+    # Fallback: if no GK-qualified members, show all active members of dept
+    if not commander_candidates and dept_id:
+        commander_candidates = (
+            db.query(Member)
+            .filter(Member.org_id == dept_id, Member.active.is_(True))
+            .order_by(Member.lastname, Member.firstname)
+            .all()
+        )
 
     from app.models.incident import IncidentChange
     recent_changes = (
@@ -534,7 +622,9 @@ async def vehicle_detail(
     can_edit = has_role(user, "incident_leader", "admin", "recorder")
     return templates.TemplateResponse(request, "incident/_vehicle_modal.html", {
         "user": user, "incident": incident, "vehicle": vehicle,
-        "members": members, "recent_changes": recent_changes, "can_edit": can_edit,
+        "members": commander_candidates, "recent_changes": recent_changes,
+        "can_edit": can_edit, "unit_status_values": UNIT_STATUS_VALUES,
+        "bos_values": BOS_VALUES,
     })
 
 
@@ -568,6 +658,25 @@ async def set_vehicle_commander_new(
     db.commit()
     await manager.broadcast(incident_id, {"type": "vehicle_updated", "reload_board": True})
     return RedirectResponse(f"/einsatz/{incident_id}/fahrzeug/{vehicle_id}/detail", status_code=303)
+
+
+@router.post("/einsatz/{incident_id}/fahrzeug/{vehicle_id}/status")
+async def set_vehicle_unit_status(
+    incident_id: int, vehicle_id: int, request: Request,
+    unit_status: str = Form(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    vehicle = db.get(IncidentVehicle, vehicle_id)
+    if not vehicle:
+        return Response(status_code=404)
+    try:
+        set_unit_status(db, vehicle, unit_status, user_id=request.state.user.id)
+    except ValueError:
+        return Response(status_code=422)
+    db.commit()
+    await manager.broadcast(incident_id, {"type": "vehicle_updated", "reload_board": True})
+    return Response(status_code=204)
 
 
 # ── Auftrags-Detail / Edit-Modal ──────────────────────────────────────────────

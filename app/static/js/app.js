@@ -87,12 +87,18 @@ function incidentBoard(incidentId, alarm, startedAt) {
     lastUpdateDisplay: '–',
     lastUpdateAgeSec: 0,
     lastUpdateState: 'fresh',  // 'fresh' | 'warn' (>60s) | 'stale' (>300s)
+    sidebarOpen: localStorage.getItem('sidebarOpen') !== 'false',
 
     init() {
       this._startTimer(new Date(startedAt));
       this._startLastUpdate();
       this._connectWS(incidentId);
       this._setupKeyboard(incidentId);
+    },
+
+    toggleSidebar() {
+      this.sidebarOpen = !this.sidebarOpen;
+      localStorage.setItem('sidebarOpen', String(this.sidebarOpen));
     },
 
     _startLastUpdate() {
@@ -135,6 +141,7 @@ function incidentBoard(incidentId, alarm, startedAt) {
     _connectWS(id) {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const url = `${proto}://${location.host}/ws/incident/${id}`;
+      let firstConnect = true;
       const connect = () => {
         const ws = new WebSocket(url);
         ws.onmessage = (e) => {
@@ -143,7 +150,6 @@ function incidentBoard(incidentId, alarm, startedAt) {
           if (ev.reload_board) {
             const modal = document.getElementById('cardDetailModal');
             if (modal && modal.open) {
-              // Delay reload until modal is closed
               modal.addEventListener('close', () => location.reload(), { once: true });
             } else {
               location.reload();
@@ -154,7 +160,13 @@ function incidentBoard(incidentId, alarm, startedAt) {
             window.location.href = `/archiv/${id}`;
           }
         };
-        ws.onclose = () => setTimeout(connect, 3000);
+        ws.onclose = () => {
+          setTimeout(() => {
+            connect();
+            if (!firstConnect) location.reload(); // server-wins after reconnect
+          }, 3000);
+        };
+        ws.onopen = () => { firstConnect = false; };
         this._ws = ws;
         setInterval(() => ws.readyState === 1 && ws.send('ping'), 30000);
       };
@@ -250,6 +262,29 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/static/sw.js').catch(() => {});
   });
 }
+
+
+/* ─── Offline: block writes with toast, reload on reconnect ─────── */
+document.addEventListener('htmx:responseError', (e) => {
+  const xhr = e.detail.xhr;
+  if (xhr && (xhr.status === 503 || xhr.status === 0) && xhr.getResponseHeader && xhr.getResponseHeader('X-Offline') === '1') {
+    const appEl = document.querySelector('[x-data="appState()"]');
+    if (appEl && window.Alpine) {
+      Alpine.$data(appEl).addToast('Aktion erfordert Verbindung — du bist offline.', 'warn');
+    }
+    e.preventDefault();
+  }
+});
+
+// After SW intercepts a 503 for a mutating fetch (non-HTMX), also show a toast
+document.addEventListener('DOMContentLoaded', () => {
+  // Check if this page load itself was served from SW offline cache
+  if (document.getElementById('offline-banner')) return; // banner already in HTML
+  window.addEventListener('online', () => {
+    // Reconnected: reload to get fresh server state
+    location.reload();
+  });
+});
 
 
 /* ─── Utility: VAPID key conversion ─────────────────────────────── */

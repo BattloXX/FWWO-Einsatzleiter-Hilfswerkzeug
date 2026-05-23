@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.models.incident import (
     Incident, IncidentColumn, IncidentVehicle, Task, Message,
-    FIXED_COLUMNS, FIXED_COLUMN_TITLES,
+    FIXED_COLUMNS, FIXED_COLUMN_TITLES, UNIT_STATUS_VALUES, TRAFFIC_LIGHT_VALUES,
 )
-from app.models.master import AlarmType, VehicleMaster, DefaultMessage, TaskSuggestion, AlarmDispatchVehicle, Member
+from app.models.master import AlarmType, VehicleMaster, DefaultMessage, TaskSuggestion, AlarmDispatchVehicle, Member, MemberQualification, Qualification
 from app.core.audit import write_incident_change, write_audit
 
 
@@ -186,11 +186,14 @@ def add_task(
     title: str,
     detail: Optional[str] = None,
     user_id: Optional[int] = None,
+    column_id: Optional[int] = None,
 ) -> Task:
-    tasks_col = _get_column(incident, "tasks")
+    if column_id is None:
+        tasks_col = _get_column(incident, "tasks")
+        column_id = tasks_col.id if tasks_col else None
     task = Task(
         incident_id=incident.id,
-        column_id=tasks_col.id if tasks_col else None,
+        column_id=column_id,
         title=title,
         detail=detail,
         created_by_user_id=user_id,
@@ -310,6 +313,41 @@ def quick_create_commander(
     return set_commander(db, vehicle, member.id, user_id=user_id)
 
 
+def set_unit_status(
+    db: Session,
+    vehicle: IncidentVehicle,
+    status: str,
+    user_id: Optional[int] = None,
+) -> IncidentVehicle:
+    if status not in UNIT_STATUS_VALUES:
+        raise ValueError(f"Ungültiger Status: {status}")
+    before = {"unit_status": vehicle.unit_status}
+    vehicle.unit_status = status
+    db.flush()
+    write_incident_change(
+        db, vehicle.incident_id, "vehicle.status_set", "incident_vehicle", vehicle.id,
+        before=before, after={"unit_status": status},
+        user_id=user_id,
+    )
+    return vehicle
+
+
+def list_commander_candidates(db: Session, org_ids: list[int]) -> list[Member]:
+    """Return active members with the GK (Gruppenkommandant) qualification."""
+    return (
+        db.query(Member)
+        .join(MemberQualification, Member.id == MemberQualification.member_id)
+        .join(Qualification, MemberQualification.qualification_id == Qualification.id)
+        .filter(
+            Member.active.is_(True),
+            Member.org_id.in_(org_ids),
+            Qualification.code == "GK",
+        )
+        .order_by(Member.lastname, Member.firstname)
+        .all()
+    )
+
+
 def update_task(
     db: Session,
     task: Task,
@@ -344,6 +382,56 @@ def cancel_task(
         user_id=user_id,
     )
     return task
+
+
+def set_task_status(
+    db: Session,
+    task: Task,
+    status: str,
+    user_id: Optional[int] = None,
+) -> Task:
+    if status not in TRAFFIC_LIGHT_VALUES:
+        raise ValueError(f"Ungültiger Status: {status}")
+    before = {"status": task.status, "is_done": task.is_done}
+    task.status = status
+    if status == "done":
+        task.is_done = True
+        task.done_at = _now()
+    elif task.is_done:
+        task.is_done = False
+        task.done_at = None
+    db.flush()
+    write_incident_change(
+        db, task.incident_id, "task.status_set", "task", task.id,
+        before=before, after={"status": status},
+        user_id=user_id,
+    )
+    return task
+
+
+def set_message_status(
+    db: Session,
+    message: Message,
+    status: str,
+    user_id: Optional[int] = None,
+) -> Message:
+    if status not in TRAFFIC_LIGHT_VALUES:
+        raise ValueError(f"Ungültiger Status: {status}")
+    before = {"status": message.status, "is_done": message.is_done}
+    message.status = status
+    if status == "done":
+        message.is_done = True
+        message.done_at = _now()
+    elif message.is_done:
+        message.is_done = False
+        message.done_at = None
+    db.flush()
+    write_incident_change(
+        db, message.incident_id, "message.status_set", "message", message.id,
+        before=before, after={"status": status},
+        user_id=user_id,
+    )
+    return message
 
 
 def move_card(

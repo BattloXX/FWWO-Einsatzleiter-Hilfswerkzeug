@@ -21,6 +21,7 @@
         <th>Farbe</th>
         <th>Name</th>
         <th>Kürzel</th>
+        <th>BOS</th>
         <th>Kontakt</th>
         <th>Status</th>
         <th>Typ</th>
@@ -36,6 +37,7 @@
           <strong>{{ org.name }}</strong>
         </td>
         <td><code>{{ org.slug }}</code></td>
+        <td>{{ org.bos }}</td>
         <td>{{ org.contact_email or '–' }}</td>
         <td>
           {% if org.is_active %}
@@ -81,6 +83,14 @@
         <div class="form-group">
           <label>Farbe</label>
           <input type="color" name="color" value="#1877f2" class="form-control" style="width:60px;height:40px;padding:2px">
+        </div>
+        <div class="form-group">
+          <label>BOS-Typ</label>
+          <select name="bos" class="form-control">
+            {% for b in bos_values %}
+            <option value="{{ b }}" {% if b == 'Feuerwehr' %}selected{% endif %}>{{ b }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="form-group">
           <label>Kontakt E-Mail (optional)</label>

@@ -4,8 +4,13 @@
 
 {% block head_extra %}
 <style>
-  .board-wrap { display: flex; gap: 0; height: calc(100vh - var(--topnav-h)); overflow: hidden; }
-  .sidebar { width: 300px; min-width: 220px; overflow-y: auto; border-right: 1px solid var(--border); padding: 12px; flex-shrink: 0; }
+  .board-wrap { display: flex; gap: 0; height: calc(100vh - var(--topnav-h)); overflow: hidden; position: relative; }
+  .sidebar {
+    width: var(--sidebar-w, 300px); min-width: 0; overflow-y: auto; overflow-x: hidden;
+    border-right: 1px solid var(--border); padding: 12px; flex-shrink: 0;
+    transition: width .2s ease, padding .2s ease, border .2s ease;
+  }
+  .sidebar--collapsed { width: 0 !important; padding: 0 !important; border-right: none !important; }
   .kanban { flex: 1; display: flex; overflow-x: auto; gap: 10px; padding: 12px; }
 </style>
 {% endblock %}
@@ -49,8 +54,14 @@
 
 <div class="board-wrap" x-data="incidentBoard({{ incident.id }}, '{{ incident.alarm_type_code }}', '{{ incident.started_at|local_iso }}')">
 
+  <!-- Sidebar Toggle Button -->
+  <button class="sidebar-toggle" @click="toggleSidebar()"
+          :title="sidebarOpen ? 'Sidebar ausblenden' : 'Sidebar einblenden'">
+    <span x-text="sidebarOpen ? '◀' : '▶'"></span>
+  </button>
+
   <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar">
+  <aside class="sidebar" id="sidebar" :class="sidebarOpen ? '' : 'sidebar--collapsed'">
 
     <!-- Lage-Ticker -->
     <div class="lage-ticker" id="lageTicker" x-data="lageTicker({{ lage_hints|map(attribute='text')|list|tojson }})">
@@ -145,24 +156,12 @@
     {% set col_tasks = incident.tasks|selectattr('column_id', 'eq', col.id)|selectattr('vehicle_id', 'none')|list %}
     {% set col_messages = incident.messages if col.code == 'messages' else [] %}
     {% set col_persons = incident.rescued_persons if col.code == 'rescued' else [] %}
+    {% set col_count = col_vehicles|length + col_tasks|length + col_messages|length + col_persons|length %}
 
     <div class="kanban-col" id="col-{{ col.id }}"
          data-col-id="{{ col.id }}" data-col-code="{{ col.code }}">
-      <div class="kanban-col__header">
-        <span class="kanban-col__title">{{ col.title }}</span>
-        <span class="kanban-col__count">
-          {{ col_vehicles|length + col_tasks|length + col_messages|length + col_persons|length }}
-        </span>
-      </div>
+      {% include "incident/_lane_header.html" %}
       <div class="kanban-col__body sortable-zone" id="zone-{{ col.id }}">
-
-        {% if col.code == 'dispatched' and can_edit %}
-        <button class="btn btn--ghost btn--full btn--sm" type="button"
-                onclick="document.getElementById('vehicleWizard').showModal()"
-                title="Fahrzeug zum Einsatz hinzufügen (aus Stammdaten oder neu anlegen)">
-          + Fahrzeug hinzufügen
-        </button>
-        {% endif %}
 
         {% for vehicle in col_vehicles %}
         {% include "incident/_vehicle_card.html" %}
@@ -182,25 +181,139 @@
         {% for person in col_persons %}
         {% include "incident/_person_card.html" %}
         {% endfor %}
-        {% if can_edit %}
-        <button class="btn btn--ghost btn--full btn--sm"
-                onclick="document.getElementById('personWizard').showModal()">+ Person erfassen</button>
-        {% endif %}
         {% endif %}
 
       </div>
     </div>
     {% endfor %}
+
+    <!-- + Neue Spalte / Abschnitt -->
+    {% if can_edit %}
+    <div style="display:flex; flex-direction:column; gap:6px; padding-top:2px; flex-shrink:0;">
+      <button class="kanban-add-col" type="button"
+              onclick="document.getElementById('addColumnDialog').showModal()"
+              title="Neuen Abschnitt/Spalte hinzufügen">+</button>
+    </div>
+    {% endif %}
   </div>
 </div>
 
-<!-- Fahrzeug Wizard Dialog -->
+<!-- Quick-Add Auftrag Dialog -->
+<dialog class="modal" id="quickAddTaskDialog" x-data="{colId: null}">
+  <div class="modal__content" style="min-width:400px;">
+    <div class="modal__header">
+      <h3 class="modal__title">Auftrag anlegen</h3>
+      <button type="button" @click="$el.closest('dialog').close()" class="modal__close">×</button>
+    </div>
+    <form hx-post="/einsatz/{{ incident.id }}/aufgabe" hx-swap="none"
+          @htmx:after-request="$el.reset(); $el.closest('dialog').close()">
+      <div class="modal__body">
+        <input type="hidden" name="column_id" :value="colId">
+        {% if task_suggestions %}
+        <div class="task-suggestions" style="margin-bottom:10px;">
+          {% for ts in task_suggestions %}
+          <button type="button" class="suggestion-pill"
+                  onclick="this.closest('form').querySelector('[name=title]').value='{{ ts.text }}'">{{ ts.text }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="form-group">
+          <input type="text" name="title" placeholder="Auftrag..." class="form-input" required autocomplete="off">
+        </div>
+        <div class="form-group">
+          <input type="text" name="detail" placeholder="Zusatzinfo (optional)" class="form-input">
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="button" @click="$el.closest('dialog').close()" class="btn btn--ghost">Abbrechen</button>
+        <button type="submit" class="btn btn--primary">Anlegen</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- Quick-Add Meldung Dialog -->
+<dialog class="modal" id="quickAddMsgDialog">
+  <div class="modal__content" style="min-width:400px;">
+    <div class="modal__header">
+      <h3 class="modal__title">Meldung anlegen</h3>
+      <button type="button" @click="$el.closest('dialog').close()" class="modal__close">×</button>
+    </div>
+    <form hx-post="/einsatz/{{ incident.id }}/meldung" hx-swap="none"
+          @htmx:after-request="$el.reset(); $el.closest('dialog').close()">
+      <div class="modal__body">
+        {% if msg_suggestions %}
+        <div class="task-suggestions" style="margin-bottom:10px;">
+          {% for ms in msg_suggestions %}
+          <button type="button" class="suggestion-pill"
+                  onclick="this.closest('form').querySelector('[name=title]').value='{{ ms.text }}'">{{ ms.text }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="form-group">
+          <input type="text" name="title" placeholder="Meldung..." class="form-input" required autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="font-size:.82rem;">Einheit (optional)</label>
+          <select name="vehicle_id" class="form-select">
+            <option value="">– keine –</option>
+            {% for v in incident.vehicles %}
+            {% if v.removed_at is none %}
+            <option value="{{ v.id }}">{{ v.vehicle_master.code }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="font-size:.82rem; color:var(--text-muted);">Erinnerung in Minuten (0 = keine)</label>
+          <input type="number" name="due_after_min" class="form-input" min="0" value="0">
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="button" @click="$el.closest('dialog').close()" class="btn btn--ghost">Abbrechen</button>
+        <button type="submit" class="btn btn--primary">Anlegen</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- Neuer Abschnitt / Spalte Dialog -->
+<dialog class="modal" id="addColumnDialog">
+  <div class="modal__content" style="min-width:360px;">
+    <div class="modal__header">
+      <h3 class="modal__title">Abschnitt hinzufügen</h3>
+      <button type="button" @click="$el.closest('dialog').close()" class="modal__close">×</button>
+    </div>
+    <form hx-post="/einsatz/{{ incident.id }}/abschnitt" hx-swap="none"
+          @htmx:after-request="$el.reset(); $el.closest('dialog').close()">
+      <div class="modal__body">
+        <div class="form-group">
+          <input type="text" name="title" class="form-input" placeholder="Abschnitt..." required>
+        </div>
+        <div class="section-presets">
+          <button type="button" class="btn btn--ghost btn--xs"
+                  onclick="this.closest('form').querySelector('[name=title]').value='Abschnitt 1'">Abschnitt 1</button>
+          <button type="button" class="btn btn--ghost btn--xs"
+                  onclick="this.closest('form').querySelector('[name=title]').value='Bereitstellung'">Bereitstellung</button>
+          <button type="button" class="btn btn--ghost btn--xs"
+                  onclick="this.closest('form').querySelector('[name=title]').value='Atemschutz'">Atemschutz</button>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button type="button" @click="$el.closest('dialog').close()" class="btn btn--ghost">Abbrechen</button>
+        <button type="submit" class="btn btn--primary">Anlegen</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- Einheit Wizard Dialog -->
 <dialog class="modal" id="vehicleWizard">
   <div class="modal__content" x-data="vehicleWizard({{ incident.id }})" x-init="loadSuggestions()" style="min-width:560px;">
     <div class="modal__header">
       <div>
-        <h3 class="modal__title">Fahrzeug hinzufügen</h3>
-        <p class="modal__subtitle">Vorschläge aus den Stammdaten oder neues Fahrzeug anlegen</p>
+        <h3 class="modal__title">Einheit hinzufügen</h3>
+        <p class="modal__subtitle">Vorschläge aus den Stammdaten oder neue Einheit anlegen</p>
       </div>
       <button type="button" @click="$el.closest('dialog').close()" class="modal__close" title="Schließen">×</button>
     </div>
@@ -219,7 +332,7 @@
             <input type="hidden" name="vehicle_master_id" :value="s.id">
             <button type="submit" class="suggestion-pill suggestion-pill--block"
                     :disabled="s.in_use"
-                    :title="s.in_use ? 'Fahrzeug ist bereits im Einsatz' : 'Dieses Fahrzeug zum Einsatz hinzufügen'">
+                    :title="s.in_use ? 'Einheit ist bereits im Einsatz' : 'Diese Einheit zum Einsatz hinzufügen'">
               <strong x-text="s.code"></strong>
               <span class="text-muted" x-text="' · ' + s.name + (s.type ? ' (' + s.type + ')' : '')"></span>
               <span x-show="s.in_use" class="text-muted">— bereits im Einsatz</span>
@@ -227,13 +340,13 @@
           </form>
         </template>
       </div>
-      <p x-show="suggestions.length === 0" class="form-hint">Keine passenden Fahrzeuge gefunden.</p>
+      <p x-show="suggestions.length === 0" class="form-hint">Keine passenden Einheiten gefunden.</p>
 
       <hr style="margin: 16px 0; border:0; border-top:1px solid var(--border);">
 
       <details>
-        <summary style="cursor:pointer; font-weight:600;" title="Fahrzeug anlegen, das nicht in den Stammdaten existiert">
-          + Neues Fahrzeug anlegen (nicht in Stammdaten)
+        <summary style="cursor:pointer; font-weight:600;" title="Einheit anlegen, die nicht in den Stammdaten existiert">
+          + Neue Einheit anlegen (nicht in Stammdaten)
         </summary>
         <form method="post" :action="`/einsatz/${incidentId}/fahrzeug-hinzufuegen`" style="margin-top:12px;">
           <div class="form-row" style="display:flex; gap:8px;">
@@ -250,7 +363,7 @@
             <label class="form-label">TYP (optional)</label>
             <input type="text" name="new_type" class="form-input" placeholder="z. B. Kommandofahrzeug">
           </div>
-          <p class="form-hint">Das Fahrzeug wird sofort dem Einsatz zugeordnet und in den Stammdaten gespeichert.</p>
+          <p class="form-hint">Die Einheit wird sofort dem Einsatz zugeordnet und in den Stammdaten gespeichert.</p>
           <div style="text-align:right;">
             <button type="submit" class="btn btn--primary">Anlegen & hinzufügen</button>
           </div>
@@ -264,45 +377,63 @@
 <dialog class="modal" id="personWizard">
   <div class="modal__content" x-data="personWizard()">
     <div class="modal__header">
-      <h3>Person erfassen</h3>
+      <h3>Gerettete Person erfassen</h3>
       <button type="button" @click="$el.closest('dialog').close()" class="modal__close">×</button>
     </div>
     <form method="post" action="/einsatz/{{ incident.id }}/person">
+      <input type="hidden" name="gender" :value="gender">
+      <input type="hidden" name="person_group" :value="group">
       <div class="modal__body">
+        <!-- Step 1: Geschlecht -->
         <div x-show="step === 1">
-          <p class="wizard-label">Geschlecht</p>
+          <p class="wizard-label">Schritt 1 / 4 – Geschlecht</p>
           <div class="wizard-pills">
-            <button type="button" @click="gender='Männlich'; step=2" class="wizard-pill">👨 Männlich</button>
-            <button type="button" @click="gender='Weiblich'; step=2" class="wizard-pill">👩 Weiblich</button>
-            <button type="button" @click="gender='Divers / Unbekannt'; step=2" class="wizard-pill">🧑 Divers / Unbekannt</button>
+            <button type="button" @click="gender='Männlich'; step=2" class="wizard-pill">Männlich</button>
+            <button type="button" @click="gender='Weiblich'; step=2" class="wizard-pill">Weiblich</button>
+            <button type="button" @click="gender='Divers / Unbekannt'; step=2" class="wizard-pill">Divers / Unbekannt</button>
           </div>
         </div>
+        <!-- Step 2: Alterskategorie -->
         <div x-show="step === 2">
-          <p class="wizard-label">Personengruppe</p>
+          <p class="wizard-label">Schritt 2 / 4 – Alterskategorie</p>
           <div class="wizard-pills">
-            <button type="button" @click="group='Kind'; step=3" class="wizard-pill">🧒 Kind</button>
-            <button type="button" @click="group='Erwachsen'; step=3" class="wizard-pill">🧑 Erwachsen</button>
-            <button type="button" @click="group='Ältere Person'; step=3" class="wizard-pill">👴 Ältere Person</button>
+            <button type="button" @click="group='Kind'; step=3" class="wizard-pill">Kind</button>
+            <button type="button" @click="group='Erwachsen'; step=3" class="wizard-pill">Erwachsen</button>
+            <button type="button" @click="group='Ältere Person'; step=3" class="wizard-pill">Ältere Person</button>
           </div>
         </div>
+        <!-- Step 3: Name + Fundort -->
         <div x-show="step === 3">
-          <p class="wizard-label">Details</p>
-          <input type="hidden" name="gender" :value="gender">
-          <input type="hidden" name="person_group" :value="group">
+          <p class="wizard-label">Schritt 3 / 4 – Details</p>
           <div class="form-group">
-            <label>Altersgruppe</label>
+            <label class="form-label">Altersbereich (optional)</label>
             <select name="age_range" class="form-select">
               <option value="">Unbekannt</option>
               <template x-for="a in ageOptions" :key="a"><option :value="a" x-text="a"></option></template>
             </select>
           </div>
           <div class="form-group">
-            <label>Name (falls bekannt)</label>
+            <label class="form-label">Name (falls bekannt)</label>
             <input type="text" name="name" class="form-input">
           </div>
           <div class="form-group">
-            <label>Fundort</label>
+            <label class="form-label">Fundort</label>
             <input type="text" name="location" class="form-input" placeholder="z.B. Wohnung 1. OG">
+          </div>
+        </div>
+        <!-- Step 4: Übergabe an Einheit -->
+        <div x-show="step === 4">
+          <p class="wizard-label">Schritt 4 / 4 – Übergabe an Einheit</p>
+          <div class="form-group">
+            <label class="form-label">Übergeben an</label>
+            <select name="vehicle_id" class="form-select">
+              <option value="">– später / keine –</option>
+              {% for v in incident.vehicles %}
+              {% if v.removed_at is none %}
+              <option value="{{ v.id }}">{{ v.vehicle_master.code }} ({{ v.vehicle_master.dept.name }})</option>
+              {% endif %}
+              {% endfor %}
+            </select>
           </div>
         </div>
       </div>
@@ -310,7 +441,8 @@
         <button type="button" @click="step > 1 ? step-- : $el.closest('dialog').close()" class="btn btn--ghost">
           <span x-text="step > 1 ? '← Zurück' : 'Abbrechen'"></span>
         </button>
-        <button x-show="step === 3" type="submit" class="btn btn--primary">Speichern</button>
+        <button x-show="step === 3" type="button" @click="step=4" class="btn btn--secondary">Weiter →</button>
+        <button x-show="step === 4" type="submit" class="btn btn--primary">Speichern</button>
       </div>
     </form>
   </div>
@@ -319,6 +451,14 @@
 
 {% block scripts %}
 <script>
+function openQuickAddTask(colId) {
+  const dlg = document.getElementById('quickAddTaskDialog');
+  if (!dlg) return;
+  const comp = Alpine.$data(dlg);
+  if (comp) comp.colId = colId;
+  dlg.showModal();
+}
+
 function personWizard() {
   return {
     step: 1, gender: '', group: '',

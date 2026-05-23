@@ -8,22 +8,48 @@
 
 <div class="modal__body">
 
-  <!-- Fahrzeug-Info -->
+  <!-- Einheiten-Info -->
   <div class="detail-section">
     <div class="detail-kv">
-      <span class="detail-kv__label">{{ vehicle.vehicle_master.code }}</span>
-      <span class="detail-kv__value">{{ vehicle.vehicle_master.dept.name }}</span>
+      <span class="detail-kv__label">Einheit</span>
+      <span class="detail-kv__value">{{ vehicle.vehicle_master.code }} · {{ vehicle.vehicle_master.dept.name }}</span>
     </div>
     <div class="detail-kv">
-      <span class="detail-kv__label">{{ vehicle.vehicle_master.type }}</span>
-      <span class="detail-kv__value">Spalte / Abschnitt: {{ vehicle.column.title }}</span>
+      <span class="detail-kv__label">Typ</span>
+      <span class="detail-kv__value">{{ vehicle.vehicle_master.type }}</span>
+    </div>
+    <div class="detail-kv">
+      <span class="detail-kv__label">BOS</span>
+      <span class="detail-kv__value">{{ vehicle.vehicle_master.effective_bos }}</span>
+    </div>
+    <div class="detail-kv">
+      <span class="detail-kv__label">Abschnitt</span>
+      <span class="detail-kv__value">{{ vehicle.column.title }}</span>
     </div>
   </div>
+
+  {% if can_edit and unit_status_values is defined %}
+  <!-- Einheiten-Status -->
+  <div class="detail-section">
+    <div class="detail-section__title">STATUS</div>
+    <form method="post" action="/einsatz/{{ incident.id }}/fahrzeug/{{ vehicle.id }}/status"
+          style="display:flex; gap:8px; align-items:center;">
+      <select name="unit_status" class="form-select" style="flex:1"
+              hx-post="/einsatz/{{ incident.id }}/fahrzeug/{{ vehicle.id }}/status"
+              hx-trigger="change"
+              hx-swap="none">
+        {% for s in unit_status_values %}
+        <option value="{{ s }}" {% if vehicle.unit_status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  {% endif %}
 
   {% if can_edit %}
   <!-- Gruppenkommandant -->
   <div class="detail-section">
-    <div class="detail-section__title">GRUPPENKOMMANDANT FÜR DIESES FAHRZEUG</div>
+    <div class="detail-section__title">GRUPPENKOMMANDANT</div>
 
     <form method="post" action="/einsatz/{{ incident.id }}/fahrzeug/{{ vehicle.id }}/kommandant"
           style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
@@ -31,7 +57,7 @@
         <option value="">nicht zugeteilt</option>
         {% for m in members %}
         <option value="{{ m.id }}" {% if vehicle.commander_member_id == m.id %}selected{% endif %}>
-          {{ m.firstname }}
+          {{ m.full_name }}
         </option>
         {% endfor %}
       </select>
@@ -40,7 +66,7 @@
 
     <form method="post" action="/einsatz/{{ incident.id }}/fahrzeug/{{ vehicle.id }}/kommandant-neu"
           style="display:flex; gap:8px; align-items:center;">
-      <input type="text" name="full_name" class="form-input" placeholder="neuen Namen ergänzen und zuteilen" style="flex:1">
+      <input type="text" name="full_name" class="form-input" placeholder="Namen eingeben und zuteilen" style="flex:1">
       <button type="submit" class="btn btn--secondary">ergänzen</button>
     </form>
 
@@ -51,9 +77,9 @@
   </div>
   {% endif %}
 
-  <!-- Zugeordnete Aufgaben -->
+  <!-- Zugeordnete Aufträge -->
   <div class="detail-section">
-    <div class="detail-section__title">Zugeordnete Aufgaben</div>
+    <div class="detail-section__title">Zugeordnete Aufträge</div>
     {% if vehicle.assigned_tasks %}
     {% for t in vehicle.assigned_tasks %}
     <div class="assigned-task {% if t.is_done %}assigned-task--done{% endif %} {% if t.is_cancelled %}assigned-task--cancelled{% endif %}"
@@ -67,7 +93,7 @@
     </div>
     {% endfor %}
     {% else %}
-    <p class="text-muted">Diesem Fahrzeug ist derzeit kein Auftrag zugeteilt.</p>
+    <p class="text-muted">Dieser Einheit ist derzeit kein Auftrag zugeteilt.</p>
     {% endif %}
   </div>
 

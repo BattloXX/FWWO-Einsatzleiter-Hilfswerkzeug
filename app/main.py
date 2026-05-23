@@ -3,9 +3,11 @@ import logging
 import secrets as _secrets
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings, validate_startup_secrets
@@ -87,13 +89,39 @@ def _bootstrap_admin() -> None:
 app = FastAPI(
     title="Einsatzleiter-Hilfswerkzeug",
     version=settings.APP_VERSION,
-    docs_url="/api/docs" if settings.DEBUG else None,
+    description=(
+        "REST-API des Einsatzleiter-Hilfswerkzeugs.\n\n"
+        "**Authentifizierung:** API-Key via Header `X-API-Key`.\n\n"
+        "API-Keys werden unter *Admin → API-Keys* verwaltet."
+    ),
+    contact={"name": "FF Wolfurt", "email": "office@feuerwehr-wolfurt.at"},
+    docs_url=None,
     redoc_url=None,
+    openapi_url="/api/openapi.json",
     lifespan=lifespan,
 )
 
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+def _require_system_admin(request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise __import__("fastapi").HTTPException(status_code=401, detail="Login erforderlich")
+    roles = [r.code for r in getattr(user, "roles", [])]
+    if "system_admin" not in roles:
+        raise __import__("fastapi").HTTPException(status_code=403, detail="Nur für System-Admins")
+
+
+@app.get("/api/docs", include_in_schema=False)
+async def api_docs(request: Request, _=Depends(_require_system_admin)):
+    return get_swagger_ui_html(openapi_url="/api/openapi.json", title="API Dokumentation")
+
+
+@app.get("/api/redoc", include_in_schema=False)
+async def api_redoc(request: Request, _=Depends(_require_system_admin)):
+    return get_redoc_html(openapi_url="/api/openapi.json", title="API Dokumentation (ReDoc)")
 
 
 # Session middleware – inject request.state.user
@@ -169,3 +197,33 @@ app.include_router(ui_settings.router)
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return RedirectResponse("/static/img/favicon.ico")
+
+
+# Override OpenAPI schema to add X-API-Key security scheme
+def _custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        contact=app.contact,
+        routes=app.routes,
+    )
+    schema.setdefault("components", {})
+    schema["components"].setdefault("securitySchemes", {})
+    schema["components"]["securitySchemes"]["ApiKeyAuth"] = {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API-Key aus dem Admin-Bereich (/admin/api-keys)",
+    }
+    for path in schema.get("paths", {}).values():
+        for op in path.values():
+            if isinstance(op, dict):
+                op.setdefault("security", [{"ApiKeyAuth": []}])
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _custom_openapi

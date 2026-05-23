@@ -24,6 +24,8 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["vehicle_master_id"], ["vehicle_master.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("alarm_type_code", "vehicle_master_id", name="uq_alarm_vehicle"),
+        mysql_charset="utf8mb4",
+        mysql_engine="InnoDB",
     )
     op.create_index("ix_alarm_dispatch_alarm_type", "alarm_dispatch_vehicle", ["alarm_type_code"])
 

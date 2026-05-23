@@ -4,15 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#b71921">
-  <title>Neues Passwort – Einsatzleiter</title>
+  <title>Neues Passwort – einsatzleiter.cloud</title>
   <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
   <script src="/static/js/csrf.js" defer></script>
 </head>
 <body class="login-body">
   <div class="login-container">
     <div class="login-card">
       <div class="login-logo">
-        <h1 class="login-logo__title">Neues Passwort setzen</h1>
+        <img src="/static/img/logo.png" alt="einsatzleiter.cloud" onerror="this.style.display='none'" class="login-logo__img">
+        <h1 class="login-logo__title" style="font-size:1.15rem;margin-top:4px">Neues Passwort setzen</h1>
       </div>
 
       {% if done %}

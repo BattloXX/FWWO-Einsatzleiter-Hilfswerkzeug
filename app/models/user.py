@@ -24,14 +24,26 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # org_id: which organisation this user belongs to (NULL = system_admin without org)
     org_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("fire_dept.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Lockout (Phase 7)
+    failed_login_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     user_roles: Mapped[List["UserRole"]] = relationship(back_populates="user", lazy="joined")
     push_subscriptions: Mapped[List["PushSubscription"]] = relationship(back_populates="user")
+    password_reset_tokens: Mapped[List["PasswordResetToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    org: Mapped[Optional["FireDept"]] = relationship(
+        "FireDept", foreign_keys=[org_id], lazy="joined"
+    )
 
     @property
     def roles(self) -> List[Role]:

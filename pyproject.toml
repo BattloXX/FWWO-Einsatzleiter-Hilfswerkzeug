@@ -39,6 +39,14 @@ dependencies = [
     "apscheduler>=3.10",
     # HTTP client (for internal tasks)
     "httpx>=0.27",
+    # SMTP (Passwort-Reset)
+    "aiosmtplib>=3.0",
+    # Email-Validierung
+    "email-validator>=2.1",
+    # Rate-Limiting
+    "slowapi>=0.1.9",
+    # MIME-Validierung für Uploads
+    "filetype>=1.2",
 ]
 
 [project.optional-dependencies]

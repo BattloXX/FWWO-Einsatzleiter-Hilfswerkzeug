@@ -1,13 +1,24 @@
-{% extends "base.html" %}
+{% extends "admin/_layout.html" %}
+{% from "_tooltip.html" import tip %}
+{% from "admin/_breadcrumb.html" import breadcrumb %}
 {% block title %}Einstellungen – {{ org.name if org else "System" }}{% endblock %}
 
-{% block content %}
+{% block admin_breadcrumb %}{{ breadcrumb([{'label': 'Organisation'}]) }}{% endblock %}
+
+{% block admin_content %}
 <div class="page-header">
-  <h1>Einstellungen</h1>
-  {% if request.query_params.get('saved') %}
-  <div class="alert alert-success">Einstellungen gespeichert.</div>
-  {% endif %}
+  <div>
+    <h1>Einstellungen</h1>
+    <p class="page-header__sub">Organisations-Stammdaten, Logo, Atemschutz-Parameter</p>
+  </div>
 </div>
+
+{% if request.query_params.get('saved') %}
+<div class="alert alert--success">Einstellungen gespeichert.{% if request.query_params.get('logo') == 'reset' %} Logo zurückgesetzt.{% endif %}</div>
+{% endif %}
+{% if request.query_params.get('logo_error') %}
+<div class="alert alert--error">Logo-Upload: {{ request.query_params.get('logo_error')|replace('%20', ' ') }}</div>
+{% endif %}
 
 {% if org %}
 <section class="card mb-4">
@@ -45,13 +56,23 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Logo (PNG/JPG/SVG, max 2 MB)</label>
+          <label {{ tip('Wird in der Topnav und auf gedruckten Dokumenten verwendet') }}>Logo (PNG/JPG/SVG/WEBP, max. 2 MB)</label>
           {% if org.logo_path %}
-          <div class="mb-2">
-            <img src="{{ org.logo_path }}" alt="Logo" style="max-height:60px;max-width:200px;object-fit:contain">
+          <div class="mb-2" style="display:flex; gap:12px; align-items:center;">
+            <img src="{{ org.logo_path }}" id="logoPreview" alt="Logo" style="max-height:60px;max-width:200px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;">
+            <form method="post" action="/admin/settings/org/logo/reset" style="display:inline">
+              <button type="submit" class="btn btn--ghost btn--sm"
+                      onclick="return confirm('Aktuelles Logo entfernen und Standardlogo verwenden?')"
+                      {{ tip('Entfernt das hochgeladene Logo. Standardlogo wird wieder genutzt.') }}>
+                Logo zurücksetzen
+              </button>
+            </form>
           </div>
+          {% else %}
+          <img id="logoPreview" alt="" style="display:none;max-height:60px;max-width:200px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;">
           {% endif %}
-          <input type="file" name="logo" accept="image/*" class="form-control">
+          <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="form-control"
+                 onchange="previewLogo(this)" {{ tip('Datei auswählen — Vorschau erscheint sofort') }}>
         </div>
         <div class="form-group">
           <label>Footer-Text (erscheint auf PDF-Berichten)</label>
@@ -85,24 +106,21 @@
 </section>
 {% endif %}
 
-{% if is_sysadmin %}
-<section class="card mb-4">
-  <div class="card-header">
-    <h2>System-Einstellungen</h2>
-    <span class="badge badge-warning">Nur Systemadmin</span>
-  </div>
-  <div class="card-body">
-    <dl class="info-list">
-      <dt>Version</dt><dd>{{ version }}</dd>
-      <dt>Python</dt><dd>3.14</dd>
-      <dt>Port</dt><dd>8092</dd>
-    </dl>
-    <div class="mt-3">
-      <a href="/admin/organisations" class="btn btn-secondary">Organisationen verwalten</a>
-      <a href="/admin/system/update" class="btn btn-warning">System-Update einspielen</a>
-      <a href="/admin/about" class="btn btn-outline">Über diese App</a>
-    </div>
-  </div>
-</section>
-{% endif %}
 {% endblock %}
+
+{% block scripts %}
+<script>
+function previewLogo(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const img = document.getElementById('logoPreview');
+  if (!img) return;
+  img.style.display = '';
+  const reader = new FileReader();
+  reader.onload = e => { img.src = e.target.result; };
+  reader.readAsDataURL(f);
+}
+</script>
+{% endblock %}
+
+{# System-Links wurden in die Sidebar verschoben (Phase 3) #}

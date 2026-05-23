@@ -10,7 +10,8 @@ from app.db import get_db
 from app.core.security import hash_api_key
 from app.core.audit import write_audit
 from app.models.user import ApiKey
-from app.models.incident import Incident
+from app.models.incident import Incident, IncidentOrg
+from sqlalchemy import or_
 from app.services.incident_service import create_incident
 from app.services.broadcast import manager
 from app.services.push_service import notify_all
@@ -125,16 +126,33 @@ async def create_incident_api(
     }
 
 
+def _api_key_scoped_incidents(db: Session, api_key: ApiKey):
+    """Liefert eine Incident-Query, die nur Einsätze enthält, die zur Org des API-Keys gehören.
+    Bei API-Keys ohne org_id (legacy / system) werden alle Einsätze geliefert."""
+    q = db.query(Incident)
+    if api_key.org_id is None:
+        return q
+    collab_ids_subq = db.query(IncidentOrg.incident_id).filter(
+        IncidentOrg.org_id == api_key.org_id
+    )
+    return q.filter(
+        or_(
+            Incident.primary_org_id == api_key.org_id,
+            Incident.id.in_(collab_ids_subq),
+        )
+    )
+
+
 @router.get("/einsatz/active")
 def list_active_incidents(db: Session = Depends(get_db), api_key: ApiKey = Depends(_get_api_key)):
-    incidents = db.query(Incident).filter(Incident.status == "active").all()
+    incidents = _api_key_scoped_incidents(db, api_key).filter(Incident.status == "active").all()
     return [{"id": i.id, "alarm_type_code": i.alarm_type_code,
              "started_at": i.started_at, "is_exercise": i.is_exercise} for i in incidents]
 
 
 @router.get("/einsatz/{incident_id}")
 def get_incident(incident_id: int, db: Session = Depends(get_db), api_key: ApiKey = Depends(_get_api_key)):
-    incident = db.get(Incident, incident_id)
+    incident = _api_key_scoped_incidents(db, api_key).filter(Incident.id == incident_id).first()
     if not incident:
         raise HTTPException(status_code=404)
     return {

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import tip %}
+{% set user_role_codes = (user.roles|map(attribute='code')|list) if user else [] %}
+{% set is_sysadmin = 'system_admin' in user_role_codes %}
+
+{% block content %}
+<div class="admin-shell">
+  <aside class="admin-sidebar" aria-label="Administration Menü">
+    <div class="admin-sidebar__header">Administration</div>
+
+    <nav class="admin-nav">
+      <a href="/admin"
+         class="admin-nav__item {% if request.url.path == '/admin' or request.url.path == '/admin/' %}is-active{% endif %}"
+         {{ tip('Übersicht & Kennzahlen') }}>
+        <span class="admin-nav__icon">🏠</span>Dashboard
+      </a>
+
+      <div class="admin-nav__group">Stammdaten</div>
+      <a href="/admin/fahrzeuge"
+         class="admin-nav__item {% if '/admin/fahrzeuge' in request.url.path %}is-active{% endif %}"
+         {{ tip('Fahrzeuge, Funkrufnamen, Erstausrückung') }}>
+        <span class="admin-nav__icon">🚒</span>Fahrzeuge
+      </a>
+      <a href="/admin/mitglieder"
+         class="admin-nav__item {% if '/admin/mitglieder' in request.url.path %}is-active{% endif %}"
+         {{ tip('Mannschaftsliste mit Qualifikationen') }}>
+        <span class="admin-nav__icon">👥</span>Mitglieder
+      </a>
+      <a href="/admin/qualifikationen"
+         class="admin-nav__item {% if '/admin/qualifikationen' in request.url.path %}is-active{% endif %}"
+         {{ tip('AGT, GK, MA u.a. — Codes für Mitglieder') }}>
+        <span class="admin-nav__icon">🎖️</span>Qualifikationen
+      </a>
+      <a href="/admin/auftragsvorlagen"
+         class="admin-nav__item {% if '/admin/auftragsvorlagen' in request.url.path %}is-active{% endif %}"
+         {{ tip('Vor-konfigurierte Standardaufträge pro Alarmstichwort') }}>
+        <span class="admin-nav__icon">✅</span>Auftragsvorlagen
+      </a>
+      <a href="/admin/alarmtypen"
+         class="admin-nav__item {% if '/admin/alarmtypen' in request.url.path %}is-active{% endif %}"
+         {{ tip('Bekannte Einsatzstichwörter und ihre Eigenschaften') }}>
+        <span class="admin-nav__icon">🚨</span>Alarmtypen
+      </a>
+      <a href="/admin/ausrueckordnung"
+         class="admin-nav__item {% if '/admin/ausrueckordnung' in request.url.path %}is-active{% endif %}"
+         {{ tip('Welche Fahrzeuge rücken bei welchem Stichwort aus?') }}>
+        <span class="admin-nav__icon">📋</span>Ausrückordnung
+      </a>
+      <a href="/admin/lage-hinweise"
+         class="admin-nav__item {% if '/admin/lage-hinweise' in request.url.path %}is-active{% endif %}"
+         {{ tip('Rotierender Hinweistext über dem Board') }}>
+        <span class="admin-nav__icon">💡</span>Lage-Hinweise
+      </a>
+      <a href="/admin/default-meldungen"
+         class="admin-nav__item {% if '/admin/default-meldungen' in request.url.path %}is-active{% endif %}"
+         {{ tip('Automatische Erinnerungen pro Stichwort') }}>
+        <span class="admin-nav__icon">🔔</span>Default-Meldungen
+      </a>
+
+      <div class="admin-nav__group">Verwaltung</div>
+      <a href="/admin/benutzer"
+         class="admin-nav__item {% if '/admin/benutzer' in request.url.path %}is-active{% endif %}"
+         {{ tip('Login-Accounts, Rollen, Passwörter') }}>
+        <span class="admin-nav__icon">🔑</span>Benutzer
+      </a>
+      <a href="/admin/api-keys"
+         class="admin-nav__item {% if '/admin/api-keys' in request.url.path %}is-active{% endif %}"
+         {{ tip('Schnittstellen-Keys für externe Systeme') }}>
+        <span class="admin-nav__icon">🔐</span>API-Keys
+      </a>
+      <a href="/admin/audit"
+         class="admin-nav__item {% if '/admin/audit' in request.url.path %}is-active{% endif %}"
+         {{ tip('Vollständiges Aktionsprotokoll') }}>
+        <span class="admin-nav__icon">📜</span>Audit-Log
+      </a>
+
+      <div class="admin-nav__group">Einstellungen</div>
+      <a href="/admin/settings"
+         class="admin-nav__item {% if '/admin/settings' in request.url.path %}is-active{% endif %}"
+         {{ tip('Organisations-Stammdaten, Logo, Farbe') }}>
+        <span class="admin-nav__icon">🏛️</span>Organisation
+      </a>
+      {% if is_sysadmin %}
+      <a href="/admin/system-einstellungen"
+         class="admin-nav__item {% if '/admin/system-einstellungen' in request.url.path %}is-active{% endif %}"
+         {{ tip('VAPID, Push-Konfiguration, globale Parameter') }}>
+        <span class="admin-nav__icon">⚙️</span>System
+      </a>
+      <a href="/admin/system/update"
+         class="admin-nav__item {% if '/admin/system/update' in request.url.path %}is-active{% endif %}"
+         {{ tip('Neues Release per ZIP einspielen') }}>
+        <span class="admin-nav__icon">⬆️</span>System-Update
+      </a>
+      <a href="/admin/backup"
+         class="admin-nav__item {% if '/admin/backup' in request.url.path %}is-active{% endif %}"
+         {{ tip('Stammdaten als JSON sichern oder wiederherstellen') }}>
+        <span class="admin-nav__icon">📦</span>Backup
+      </a>
+      <a href="/admin/organisations"
+         class="admin-nav__item {% if '/admin/organisations' in request.url.path %}is-active{% endif %}"
+         {{ tip('Alle Organisationen verwalten (Multi-Org)') }}>
+        <span class="admin-nav__icon">🌐</span>Alle Organisationen
+      </a>
+      {% endif %}
+    </nav>
+  </aside>
+
+  <section class="admin-main">
+    {% block admin_breadcrumb %}{% endblock %}
+    {% block admin_content %}{% endblock %}
+  </section>
+</div>
+{% endblock %}

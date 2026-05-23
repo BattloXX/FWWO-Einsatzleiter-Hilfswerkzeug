@@ -1,101 +1,87 @@
-{% extends "base.html" %}
-{% block title %}Administration – FF Wolfurt{% endblock %}
-{% block content %}
-<div class="page-content">
-  <div class="page-header">
-    <h1>Administration</h1>
+{% extends "admin/_layout.html" %}
+{% from "_tooltip.html" import tip %}
+{% from "admin/_breadcrumb.html" import breadcrumb %}
+{% block title %}Administration – Dashboard{% endblock %}
+
+{% block admin_breadcrumb %}
+{{ breadcrumb([{'label': 'Dashboard'}]) }}
+{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="page-header__sub">Übersicht & Kennzahlen für {{ user.org.name if user.org else 'das System' }}</p>
+  </div>
+</div>
+
+<div class="kpi-grid" style="padding:0; margin-bottom:24px;">
+  <div class="kpi-card" {{ tip('Einsätze mit Status "active"') }}>
+    <div class="kpi-card__value">{{ kpis.active_incidents }}</div>
+    <div class="kpi-card__label">Aktive Einsätze</div>
+  </div>
+  <div class="kpi-card" {{ tip('Alle jemals erfassten Einsätze') }}>
+    <div class="kpi-card__value">{{ kpis.total_incidents }}</div>
+    <div class="kpi-card__label">Einsätze gesamt</div>
+  </div>
+  <div class="kpi-card" {{ tip('Aktive Mannschaftsmitglieder') }}>
+    <div class="kpi-card__value">{{ kpis.members }}</div>
+    <div class="kpi-card__label">Mitglieder</div>
+  </div>
+  <div class="kpi-card" {{ tip('Aktive Fahrzeuge in den Stammdaten') }}>
+    <div class="kpi-card__value">{{ kpis.vehicles }}</div>
+    <div class="kpi-card__label">Fahrzeuge</div>
+  </div>
+  <div class="kpi-card" {{ tip('Login-Benutzer mit Status aktiv') }}>
+    <div class="kpi-card__value">{{ kpis.users }}</div>
+    <div class="kpi-card__label">Benutzer</div>
+  </div>
+</div>
+
+<div class="charts-grid" style="padding:0; grid-template-columns: 1fr 1fr;">
+  <div class="chart-box">
+    <h3>Letzte Einsätze</h3>
+    {% if recent_incidents %}
+    <table class="table-admin">
+      <thead>
+        <tr><th>Datum</th><th>Stichwort</th><th>Adresse</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for i in recent_incidents %}
+        <tr>
+          <td>{{ i.started_at.strftime('%d.%m. %H:%M') if i.started_at else '—' }}</td>
+          <td><a href="/archiv/{{ i.id }}" {{ tip('Einsatz-Detail öffnen') }}>{{ i.alarm_type_code }}</a></td>
+          <td>{{ i.address_street or '' }} {{ i.address_no or '' }}, {{ i.address_city or '' }}</td>
+          <td>
+            {% if i.status == 'active' %}
+              <span class="badge-pill badge-pill--red">aktiv</span>
+            {% else %}
+              <span class="badge-pill badge-pill--gray">{{ i.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">Noch keine Einsätze.</p>
+    {% endif %}
   </div>
 
-  <div class="admin-section-title">Einsatz-Stammdaten</div>
-  <div class="admin-grid">
-    <a href="/admin/fahrzeuge" class="admin-card">
-      <div class="admin-card__icon">🚒</div>
-      <div class="admin-card__title">Fahrzeuge</div>
-      <div class="admin-card__desc">Fahrzeuge anlegen, bearbeiten, Erstausrückung konfigurieren</div>
-    </a>
-    <a href="/admin/ausrueckordnung" class="admin-card">
-      <div class="admin-card__icon">📋</div>
-      <div class="admin-card__title">Ausrückordnung</div>
-      <div class="admin-card__desc">Welche Fahrzeuge rücken bei welchem Stichwort aus?</div>
-    </a>
-    <a href="/admin/auftragsvorlagen" class="admin-card">
-      <div class="admin-card__icon">✅</div>
-      <div class="admin-card__title">Auftragsvorlagen</div>
-      <div class="admin-card__desc">Default-Aufträge pro Alarmstichwort</div>
-    </a>
-    <a href="/admin/alarmtypen" class="admin-card">
-      <div class="admin-card__icon">🚨</div>
-      <div class="admin-card__title">Alarmtypen</div>
-      <div class="admin-card__desc">Bekannte Einsatzstichwörter und ihre Eigenschaften</div>
-    </a>
-    <a href="/admin/lage-hinweise" class="admin-card">
-      <div class="admin-card__icon">💡</div>
-      <div class="admin-card__title">Lage-Hinweise</div>
-      <div class="admin-card__desc">Rotierender Ticker im Einsatz-Board</div>
-    </a>
-    <a href="/admin/default-meldungen" class="admin-card">
-      <div class="admin-card__icon">🔔</div>
-      <div class="admin-card__title">Default-Meldungen</div>
-      <div class="admin-card__desc">Automatische Erinnerungen pro Stichwort</div>
-    </a>
-  </div>
-
-  <div class="admin-section-title">Mannschaft</div>
-  <div class="admin-grid">
-    <a href="/admin/mitglieder" class="admin-card">
-      <div class="admin-card__icon">👤</div>
-      <div class="admin-card__title">Mitglieder</div>
-      <div class="admin-card__desc">Mannschaftsliste, Qualifikationen, Ablaufdaten</div>
-    </a>
-    <a href="/admin/qualifikationen" class="admin-card">
-      <div class="admin-card__icon">🎖️</div>
-      <div class="admin-card__title">Qualifikationen</div>
-      <div class="admin-card__desc">AGT, GK, MA und weitere Qualifikations-Codes</div>
-    </a>
-  </div>
-
-  <div class="admin-section-title">Verwaltung</div>
-  <div class="admin-grid">
-    <a href="/admin/benutzer" class="admin-card">
-      <div class="admin-card__icon">🔑</div>
-      <div class="admin-card__title">Benutzer</div>
-      <div class="admin-card__desc">Login-Accounts, Rollen, Passwort-Reset</div>
-    </a>
-    <a href="/admin/api-keys" class="admin-card">
-      <div class="admin-card__icon">🔐</div>
-      <div class="admin-card__title">API-Keys</div>
-      <div class="admin-card__desc">Externe Integrations-Keys (Alarmierungssystem)</div>
-    </a>
-    <a href="/admin/audit" class="admin-card">
-      <div class="admin-card__icon">📜</div>
-      <div class="admin-card__title">Audit-Log</div>
-      <div class="admin-card__desc">Systemweites Protokoll aller Aktionen</div>
-    </a>
-  </div>
-
-  <div class="admin-section-title">Einstellungen</div>
-  <div class="admin-grid">
-    <a href="/admin/settings" class="admin-card">
-      <div class="admin-card__icon">🏛️</div>
-      <div class="admin-card__title">Organisation</div>
-      <div class="admin-card__desc">Name, Logo, Farbe, Atemschutz-Parameter</div>
-    </a>
-    {% if is_sysadmin %}
-    <a href="/admin/system-einstellungen" class="admin-card">
-      <div class="admin-card__icon">⚙️</div>
-      <div class="admin-card__title">System</div>
-      <div class="admin-card__desc">VAPID, Push, Session, globale Parameter</div>
-    </a>
-    <a href="/admin/backup" class="admin-card">
-      <div class="admin-card__icon">📦</div>
-      <div class="admin-card__title">Backup & Export</div>
-      <div class="admin-card__desc">Stammdaten-JSON exportieren und importieren</div>
-    </a>
-    <a href="/admin/organisations" class="admin-card">
-      <div class="admin-card__icon">🌐</div>
-      <div class="admin-card__title">Alle Organisationen</div>
-      <div class="admin-card__desc">Multi-Org-Verwaltung</div>
-    </a>
+  <div class="chart-box">
+    <h3>Letzte Aktionen (Audit)</h3>
+    {% if recent_audit %}
+    <ul class="change-list">
+      {% for a in recent_audit %}
+      <li class="change-list__item">
+        <span class="text-muted">{{ a.created_at.strftime('%d.%m. %H:%M') }}</span>
+        — {{ a.action }}
+        {% if a.entity_type %}<span class="text-muted">({{ a.entity_type }} #{{ a.entity_id }})</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted">Noch keine Audit-Einträge.</p>
     {% endif %}
   </div>
 </div>

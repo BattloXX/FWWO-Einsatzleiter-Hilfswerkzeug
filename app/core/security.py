@@ -1,4 +1,15 @@
+"""Auth-/Crypto-Helfer.
+
+Passwort-Hashing: bcrypt (12 Runden).
+API-Key-Hashing: SHA256 — bewusst gewählt, weil:
+  - API-Keys sind 32-Byte-Zufallswerte (~256 Bit Entropie), Wörterbuchangriffe
+    auf den Hash sind nicht praktikabel.
+  - Indexierter Hash-Lookup pro Request bleibt schnell. Argon2/bcrypt würde
+    pro Request 100-300 ms Latenz pro Schlüssel hinzufügen.
+  - Vergleich erfolgt per `hmac.compare_digest` (timing-sicher).
+"""
 import hashlib
+import hmac
 import secrets
 from typing import Optional
 
@@ -16,11 +27,18 @@ def hash_password(plain: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except (ValueError, TypeError):
+        return False
 
 
 def hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
+
+
+def verify_api_key(plain: str, stored: str) -> bool:
+    return hmac.compare_digest(stored or "", hash_api_key(plain))
 
 
 def generate_api_key() -> str:

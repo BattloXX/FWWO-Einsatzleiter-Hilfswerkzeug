@@ -1,4 +1,10 @@
-<div class="card card--rescue" data-uid="{{ person.id }}" data-kind="person">
+<div class="card card--rescue" data-uid="{{ person.id }}" data-kind="person"
+     style="cursor: pointer;"
+     hx-get="/einsatz/{{ incident.id }}/person/{{ person.id }}/detail"
+     hx-target="#cardDetailBody"
+     hx-swap="innerHTML"
+     hx-trigger="click[!event.target.closest('select,input,button,a')]"
+     hx-on::after-swap="document.getElementById('cardDetailModal').showModal()">
   <div class="card__body">
     <div class="card__title">
       {{ person.gender }}, {{ person.person_group }}

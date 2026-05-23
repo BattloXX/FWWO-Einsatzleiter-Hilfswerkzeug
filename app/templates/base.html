@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#b71921">
   <title>{% block title %}Einsatzleiter – FF Wolfurt{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/tooltips.css">
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="icon" href="/static/img/favicon.ico">
   {% block head_extra %}{% endblock %}
@@ -15,8 +16,11 @@
   {% if user %}
   <nav class="topnav" id="topnav">
     <div class="topnav__brand">
-      <img src="/static/img/logo.png" alt="FF Wolfurt" class="topnav__logo" onerror="this.style.display='none'">
-      <span class="topnav__title">FF Wolfurt</span>
+      {% set _org = user.org if user and user.org_id else None %}
+      {% set _org_logo = _org.logo_path if _org and _org.logo_path else '/static/img/logo.png' %}
+      {% set _org_name = _org.name if _org and _org.name else 'FF Wolfurt' %}
+      <img src="{{ _org_logo }}" alt="{{ _org_name }}" class="topnav__logo" onerror="this.style.display='none'">
+      <span class="topnav__title">{{ _org_name }}</span>
     </div>
     <div class="topnav__links">
       <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
@@ -102,6 +106,8 @@
   <script src="/static/js/sortable.min.js"></script>
   <script src="/static/js/app.js"></script>
   <script src="/static/js/sortable-glue.js"></script>
+  <script src="/static/js/tooltips.js"></script>
+  <script src="/static/js/csrf.js" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

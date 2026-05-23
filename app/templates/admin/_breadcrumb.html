@@ -1,0 +1,13 @@
+{% macro breadcrumb(items) %}
+<nav class="admin-breadcrumb" aria-label="Brotkrumen">
+  <a href="/admin">Administration</a>
+  {% for item in items %}
+    <span class="admin-breadcrumb__sep">›</span>
+    {% if item.href %}
+      <a href="{{ item.href }}">{{ item.label }}</a>
+    {% else %}
+      <span class="admin-breadcrumb__current">{{ item.label }}</span>
+    {% endif %}
+  {% endfor %}
+</nav>
+{% endmacro %}

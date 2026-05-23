@@ -1,0 +1,84 @@
+/* ─── Tooltips (Phase 6) ──────────────────────────────────────────
+ * Aktiviert durch [data-tip="…"]-Attribute (Macro: app/templates/_tooltip.html)
+ * Hover- & Focus-Auslöser, Touch-Geräte: Long-Press über tooltips.js.
+ */
+
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]::after,
+[data-tip]::before {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .12s ease-in-out, transform .12s ease-in-out;
+  z-index: 9999;
+  white-space: pre-line;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  background: #11131a;
+  color: #e8eaf0;
+  border: 1px solid #2e3347;
+  box-shadow: 0 4px 16px rgba(0,0,0,.6);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  max-width: 24em;
+  width: max-content;
+  text-align: left;
+  font-weight: 400;
+}
+
+[data-tip]::before {
+  content: "";
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #2e3347;
+}
+
+[data-tip]:hover::after,
+[data-tip]:hover::before,
+[data-tip]:focus-visible::after,
+[data-tip]:focus-visible::before,
+[data-tip].tip-show::after,
+[data-tip].tip-show::before {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+[data-tip]:hover::before,
+[data-tip]:focus-visible::before,
+[data-tip].tip-show::before {
+  transform: translateX(-50%);
+}
+
+/* Tooltip nach unten ausrichten, wenn das Element nah am oberen Rand klebt */
+[data-tip-pos="below"]::after {
+  bottom: auto;
+  top: calc(100% + 8px);
+  transform: translate(-50%, -4px);
+}
+[data-tip-pos="below"]::before {
+  bottom: auto;
+  top: calc(100% + 2px);
+  border-top-color: transparent;
+  border-bottom-color: #2e3347;
+}
+[data-tip-pos="below"]:hover::after,
+[data-tip-pos="below"]:focus-visible::after,
+[data-tip-pos="below"].tip-show::after {
+  transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-tip]::after, [data-tip]::before { transition: none; }
+}

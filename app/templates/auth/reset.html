@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#b71921">
+  <title>Neues Passwort – Einsatzleiter</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="login-body">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-logo">
+        <h1 class="login-logo__title">Neues Passwort setzen</h1>
+      </div>
+
+      {% if done %}
+        <div class="alert alert--info">
+          Dein Passwort wurde erfolgreich aktualisiert. Du kannst dich jetzt anmelden.
+        </div>
+        <div style="text-align:center; margin-top:12px;">
+          <a href="/login" class="btn btn--primary btn--sm">Zum Login</a>
+        </div>
+      {% elif error %}
+        <div class="alert alert--error">{{ error }}</div>
+        <div style="text-align:center; margin-top:12px;">
+          <a href="/passwort-vergessen" class="btn btn--ghost btn--sm">Neuen Link anfordern</a>
+        </div>
+      {% else %}
+        <form method="post" action="/passwort-zuruecksetzen" class="login-form" autocomplete="off">
+          <input type="hidden" name="token" value="{{ token }}">
+          <div class="form-group">
+            <label for="password">Neues Passwort</label>
+            <input type="password" id="password" name="password" required minlength="10"
+                   autocomplete="new-password" class="form-input" autofocus>
+            <p class="form-hint">Mindestens 10 Zeichen.</p>
+          </div>
+          <div class="form-group">
+            <label for="password_repeat">Passwort wiederholen</label>
+            <input type="password" id="password_repeat" name="password_repeat" required minlength="10"
+                   autocomplete="new-password" class="form-input">
+          </div>
+          <button type="submit" class="btn btn--primary btn--full">Passwort setzen</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

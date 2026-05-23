@@ -34,8 +34,13 @@
         ghostClass: 'card--ghost',
         chosenClass: 'card--chosen',
         dragClass: 'card--drag',
+        // Touch-Geräte: 150 ms Long-Press, damit Tap-Clicks nicht in Drag umschlagen
+        delay: 150,
+        delayOnTouchOnly: true,
+        touchStartThreshold: 4,
+        preventOnFilter: false,
         // Prevent drag when clicking on interactive elements
-        filter: 'select,input,button,.task-check',
+        filter: 'select,input,button,.task-check,a',
         onEnd(evt) {
           const card = evt.item;
           const kind = card.dataset.kind;
@@ -69,7 +74,11 @@
       new Sortable(zone, {
         group: { name: 'kanban', pull: false, put: true },
         animation: 150,
-        filter: 'select,input,button,.task-check',
+        delay: 150,
+        delayOnTouchOnly: true,
+        touchStartThreshold: 4,
+        preventOnFilter: false,
+        filter: 'select,input,button,.task-check,a',
         onAdd(evt) {
           const card = evt.item;
           const uid = card.dataset.uid;

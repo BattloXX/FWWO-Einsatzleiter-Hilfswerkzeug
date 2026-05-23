@@ -38,6 +38,9 @@ async def users_list(request: Request, db: Session = Depends(get_db),
     return templates.TemplateResponse(request, "admin/users.html", {
         "user": request.state.user,
         "users": users, "roles": roles,
+        "saved": request.query_params.get("saved"),
+        "mail_sent": request.query_params.get("mail"),
+        "error": request.query_params.get("error"),
     })
 
 
@@ -45,13 +48,26 @@ async def users_list(request: Request, db: Session = Depends(get_db),
 async def create_user(
     request: Request,
     username: str = Form(...), display_name: str = Form(""),
+    full_name: str = Form(""), email: str = Form(""), phone: str = Form(""),
     password: str = Form(...), role_codes: list[str] = Form([]),
     db: Session = Depends(get_db), _=Depends(require_role("admin")),
 ):
+    email_clean = (email or "").strip().lower() or None
+    if email_clean:
+        # Eindeutigkeit prüfen
+        existing = db.query(User).filter(User.email == email_clean).first()
+        if existing:
+            return RedirectResponse(
+                "/admin/benutzer?error=email_exists", status_code=303,
+            )
     new_user = User(
         username=username,
         display_name=display_name or username,
+        full_name=(full_name.strip() or None),
+        email=email_clean,
+        phone=(phone.strip() or None),
         password_hash=hash_password(password),
+        org_id=request.state.user.org_id,
     )
     db.add(new_user)
     db.flush()
@@ -60,9 +76,10 @@ async def create_user(
         if role:
             db.add(UserRole(user_id=new_user.id, role_id=role.id))
     write_audit(db, "admin.user.created", user_id=request.state.user.id,
-                entity_type="user", entity_id=new_user.id)
+                entity_type="user", entity_id=new_user.id,
+                payload={"role_codes": role_codes})
     db.commit()
-    return RedirectResponse("/admin/benutzer", status_code=303)
+    return RedirectResponse("/admin/benutzer?saved=1", status_code=303)
 
 
 @router.post("/benutzer/{user_id}/loeschen")
@@ -174,10 +191,42 @@ async def audit_log(request: Request, db: Session = Depends(get_db),
 async def admin_index(request: Request, db: Session = Depends(get_db),
                       _=Depends(require_role("admin", "org_admin", "system_admin"))):
     from app.core.permissions import has_role
+    from app.models.incident import Incident
     user = request.state.user
     is_sysadmin = has_role(user, "system_admin")
+
+    # KPI-Kennzahlen (Org-scoped, system_admin sieht alles)
+    incident_q = db.query(Incident)
+    member_q = db.query(Member)
+    vehicle_q = db.query(VehicleMaster).filter(VehicleMaster.active == True)  # noqa: E712
+    user_q = db.query(User).filter(User.active == True)  # noqa: E712
+    if not is_sysadmin and user.org_id:
+        incident_q = incident_q.filter(Incident.primary_org_id == user.org_id)
+        member_q = member_q.filter(Member.org_id == user.org_id)
+        vehicle_q = vehicle_q.filter(VehicleMaster.dept_id == user.org_id)
+        user_q = user_q.filter(User.org_id == user.org_id)
+
+    kpis = {
+        "active_incidents": incident_q.filter(Incident.status == "active").count(),
+        "total_incidents": incident_q.count(),
+        "members": member_q.filter(Member.active == True).count(),  # noqa: E712
+        "vehicles": vehicle_q.count(),
+        "users": user_q.count(),
+    }
+    recent_incidents = incident_q.order_by(Incident.started_at.desc()).limit(5).all()
+    recent_audit = (
+        db.query(AuditLog)
+        .order_by(AuditLog.created_at.desc())
+        .limit(8)
+        .all()
+    )
+
     return templates.TemplateResponse(request, "admin/index.html", {
-        "user": user, "is_sysadmin": is_sysadmin,
+        "user": user,
+        "is_sysadmin": is_sysadmin,
+        "kpis": kpis,
+        "recent_incidents": recent_incidents,
+        "recent_audit": recent_audit,
     })
 
 
@@ -252,15 +301,73 @@ async def update_member_quali(
 async def edit_user(
     user_id: int, request: Request,
     display_name: str = Form(...),
+    full_name: str = Form(""), email: str = Form(""), phone: str = Form(""),
     db: Session = Depends(get_db), _=Depends(require_role("admin")),
 ):
     u = db.get(User, user_id)
-    if u:
-        u.display_name = display_name
-        write_audit(db, "admin.user.edited", user_id=request.state.user.id,
-                    entity_type="user", entity_id=user_id)
-        db.commit()
+    if not u:
+        return RedirectResponse("/admin/benutzer", status_code=303)
+    email_clean = (email or "").strip().lower() or None
+    if email_clean and email_clean != u.email:
+        existing = db.query(User).filter(User.email == email_clean, User.id != user_id).first()
+        if existing:
+            return RedirectResponse("/admin/benutzer?error=email_exists", status_code=303)
+    u.display_name = display_name
+    u.full_name = full_name.strip() or None
+    u.email = email_clean
+    u.phone = phone.strip() or None
+    write_audit(db, "admin.user.edited", user_id=request.state.user.id,
+                entity_type="user", entity_id=user_id)
+    db.commit()
     return RedirectResponse("/admin/benutzer?saved=1", status_code=303)
+
+
+@router.post("/benutzer/{user_id}/reset-mail")
+async def send_user_reset_mail(
+    user_id: int, request: Request, db: Session = Depends(get_db),
+    _=Depends(require_role("admin")),
+):
+    """Admin löst den Self-Service-Reset-Flow für einen anderen Benutzer aus."""
+    import hashlib
+    import secrets as sec
+    from datetime import datetime, timedelta, timezone
+    from app.config import settings
+    from app.models.password_reset import PasswordResetToken
+    from app.services.mail_service import send_password_reset
+
+    u = db.get(User, user_id)
+    if not u or not u.email:
+        return RedirectResponse("/admin/benutzer?error=no_email", status_code=303)
+
+    # Alte Tokens entwerten
+    now = datetime.now(timezone.utc)
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == u.id,
+        PasswordResetToken.used_at.is_(None),
+    ).update({"used_at": now})
+
+    raw_token = sec.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    db.add(PasswordResetToken(
+        user_id=u.id,
+        token_hash=token_hash,
+        expires_at=now + timedelta(minutes=settings.PASSWORD_RESET_TTL_MIN),
+        requesting_ip=request.client.host if request.client else None,
+    ))
+    write_audit(db, "admin.user.password_reset_mail",
+                user_id=request.state.user.id, entity_type="user", entity_id=u.id)
+    db.commit()
+
+    base = settings.effective_public_base_url.rstrip("/")
+    reset_url = f"{base}/passwort-zuruecksetzen?token={raw_token}"
+    try:
+        await send_password_reset(
+            to=u.email, reset_url=reset_url,
+            user_display_name=u.full_name or u.display_name or u.username,
+        )
+    except Exception:
+        return RedirectResponse("/admin/benutzer?error=mail_failed", status_code=303)
+    return RedirectResponse("/admin/benutzer?saved=1&mail=1", status_code=303)
 
 
 @router.post("/benutzer/{user_id}/rollen")

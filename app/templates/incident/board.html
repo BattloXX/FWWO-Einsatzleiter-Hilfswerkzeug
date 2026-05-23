@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_tooltip.html" import tip %}
 {% block title %}{{ incident.alarm_type_code }} – Einsatz #{{ incident.id }}{% endblock %}
 
 {% block head_extra %}
@@ -27,13 +28,16 @@
     <span class="timer" x-text="timerDisplay">00:00</span>
   </div>
   <div class="incident-header__actions">
-    <a href="/einsatz/{{ incident.id }}/atemschutz" class="btn btn--sm btn--secondary" title="Atemschutzüberwachung">AS-Überwachung</a>
-    <a href="/einsatz/{{ incident.id }}/qr" class="btn btn--sm btn--ghost" title="QR-Code anzeigen">QR</a>
-    <a href="/archiv/{{ incident.id }}/pdf" class="btn btn--sm btn--ghost" title="PDF herunterladen">PDF</a>
+    <a href="/einsatz/{{ incident.id }}/atemschutz" class="btn btn--sm btn--secondary"
+       {{ tip('Atemschutzüberwachung — Pressluft-Trupp-Steuerung') }}>AS-Überwachung</a>
+    <a href="/einsatz/{{ incident.id }}/qr" class="btn btn--sm btn--ghost"
+       {{ tip('QR-Code zum Einsatz beitreten anzeigen') }}>QR</a>
+    <a href="/archiv/{{ incident.id }}/pdf" class="btn btn--sm btn--ghost"
+       {{ tip('Einsatzdokumentation als PDF herunterladen') }}>PDF</a>
     {% if can_edit %}
     <button class="btn btn--sm btn--danger"
             onclick="if(confirm('Einsatz wirklich abschließen?')) { fetch('/einsatz/{{ incident.id }}/abschliessen', {method:'POST'}); }"
-            title="Einsatz abschließen">Abschließen</button>
+            {{ tip('Einsatz abschließen und ins Archiv verschieben') }}>Abschließen</button>
     {% endif %}
   </div>
 </div>
@@ -52,7 +56,7 @@
     <!-- Aufgabe hinzufügen -->
     {% if can_edit %}
     <div class="sidebar-box">
-      <div class="sidebar-box__title">Auftrag hinzufügen</div>
+      <div class="sidebar-box__title" {{ tip('Neuen Auftrag in die Liste „Aufträge" einreihen') }}>Auftrag hinzufügen</div>
       <form hx-post="/einsatz/{{ incident.id }}/aufgabe" hx-swap="none" @htmx:after-request="this.reset()">
         <div class="input-row">
           <input type="text" name="title" placeholder="Auftrag..." class="form-input" id="taskInput"
@@ -78,7 +82,7 @@
 
     <!-- Meldung hinzufügen -->
     <div class="sidebar-box">
-      <div class="sidebar-box__title">Meldung hinzufügen <kbd>Strg+M</kbd></div>
+      <div class="sidebar-box__title" {{ tip('Lagemeldung mit optionalem Erinnerungs-Timer anlegen') }}>Meldung hinzufügen <kbd>Strg+M</kbd></div>
       <form hx-post="/einsatz/{{ incident.id }}/meldung" hx-swap="none" @htmx:after-request="this.reset()">
         <input type="text" name="title" placeholder="Meldung..." class="form-input" id="msgInput" required autocomplete="off">
         <div class="input-row">
@@ -90,7 +94,7 @@
 
     <!-- Abschnitt hinzufügen -->
     <div class="sidebar-box">
-      <div class="sidebar-box__title">Abschnitt hinzufügen</div>
+      <div class="sidebar-box__title" {{ tip('Neue Kanban-Spalte für einen Einsatzabschnitt anlegen') }}>Abschnitt hinzufügen</div>
       <form hx-post="/einsatz/{{ incident.id }}/abschnitt" hx-swap="none">
         <div class="input-row">
           <input type="text" name="title" class="form-input" placeholder="Abschnitt..." required>
@@ -147,6 +151,14 @@
       </div>
       <div class="kanban-col__body sortable-zone" id="zone-{{ col.id }}">
 
+        {% if col.code == 'dispatched' and can_edit %}
+        <button class="btn btn--ghost btn--full btn--sm" type="button"
+                onclick="document.getElementById('vehicleWizard').showModal()"
+                title="Fahrzeug zum Einsatz hinzufügen (aus Stammdaten oder neu anlegen)">
+          + Fahrzeug hinzufügen
+        </button>
+        {% endif %}
+
         {% for vehicle in col_vehicles %}
         {% include "incident/_vehicle_card.html" %}
         {% endfor %}
@@ -176,6 +188,72 @@
     {% endfor %}
   </div>
 </div>
+
+<!-- Fahrzeug Wizard Dialog -->
+<dialog class="modal" id="vehicleWizard">
+  <div class="modal__content" x-data="vehicleWizard({{ incident.id }})" x-init="loadSuggestions()" style="min-width:560px;">
+    <div class="modal__header">
+      <div>
+        <h3 class="modal__title">Fahrzeug hinzufügen</h3>
+        <p class="modal__subtitle">Vorschläge aus den Stammdaten oder neues Fahrzeug anlegen</p>
+      </div>
+      <button type="button" @click="$el.closest('dialog').close()" class="modal__close" title="Schließen">×</button>
+    </div>
+    <div class="modal__body">
+      <div class="form-group">
+        <input type="search" class="form-input"
+               placeholder="Funkrufname oder Typ suchen…"
+               x-model="query"
+               @input.debounce.250ms="loadSuggestions()"
+               title="Volltextsuche in Funkrufname und Typ">
+      </div>
+
+      <div x-show="suggestions.length > 0" class="suggestion-list">
+        <template x-for="s in suggestions" :key="s.id">
+          <form method="post" :action="`/einsatz/${incidentId}/fahrzeug-hinzufuegen`" style="display:block;">
+            <input type="hidden" name="vehicle_master_id" :value="s.id">
+            <button type="submit" class="suggestion-pill suggestion-pill--block"
+                    :disabled="s.in_use"
+                    :title="s.in_use ? 'Fahrzeug ist bereits im Einsatz' : 'Dieses Fahrzeug zum Einsatz hinzufügen'">
+              <strong x-text="s.code"></strong>
+              <span class="text-muted" x-text="' · ' + s.name + (s.type ? ' (' + s.type + ')' : '')"></span>
+              <span x-show="s.in_use" class="text-muted">— bereits im Einsatz</span>
+            </button>
+          </form>
+        </template>
+      </div>
+      <p x-show="suggestions.length === 0" class="form-hint">Keine passenden Fahrzeuge gefunden.</p>
+
+      <hr style="margin: 16px 0; border:0; border-top:1px solid var(--border);">
+
+      <details>
+        <summary style="cursor:pointer; font-weight:600;" title="Fahrzeug anlegen, das nicht in den Stammdaten existiert">
+          + Neues Fahrzeug anlegen (nicht in Stammdaten)
+        </summary>
+        <form method="post" :action="`/einsatz/${incidentId}/fahrzeug-hinzufuegen`" style="margin-top:12px;">
+          <div class="form-row" style="display:flex; gap:8px;">
+            <div class="form-group" style="flex:1;">
+              <label class="form-label">FUNKRUFNAME / KÜRZEL</label>
+              <input type="text" name="new_code" class="form-input" required maxlength="30" placeholder="z. B. KDOF">
+            </div>
+            <div class="form-group" style="flex:2;">
+              <label class="form-label">NAME</label>
+              <input type="text" name="new_name" class="form-input" required maxlength="150" placeholder="z. B. Kommandofahrzeug">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">TYP (optional)</label>
+            <input type="text" name="new_type" class="form-input" placeholder="z. B. Kommandofahrzeug">
+          </div>
+          <p class="form-hint">Das Fahrzeug wird sofort dem Einsatz zugeordnet und in den Stammdaten gespeichert.</p>
+          <div style="text-align:right;">
+            <button type="submit" class="btn btn--primary">Anlegen & hinzufügen</button>
+          </div>
+        </form>
+      </details>
+    </div>
+  </div>
+</dialog>
 
 <!-- Person Wizard Dialog -->
 <dialog class="modal" id="personWizard">
@@ -243,6 +321,24 @@ function personWizard() {
       if (this.group === 'Kind') return ['0–4 Jahre','5–9 Jahre','10–14 Jahre','15–17 Jahre'];
       if (this.group === 'Ältere Person') return ['65–69 Jahre','70–74 Jahre','75–79 Jahre','80+ Jahre'];
       return ['18–24 Jahre','25–34 Jahre','35–44 Jahre','45–54 Jahre','55–64 Jahre'];
+    }
+  };
+}
+
+function vehicleWizard(incidentId) {
+  return {
+    incidentId,
+    query: '',
+    suggestions: [],
+    async loadSuggestions() {
+      try {
+        const url = `/einsatz/${this.incidentId}/fahrzeug-vorschlaege` +
+                    (this.query ? `?q=${encodeURIComponent(this.query)}` : '');
+        const r = await fetch(url, { credentials: 'same-origin' });
+        if (!r.ok) { this.suggestions = []; return; }
+        const data = await r.json();
+        this.suggestions = data.items || [];
+      } catch (e) { this.suggestions = []; }
     }
   };
 }

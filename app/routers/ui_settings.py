@@ -20,6 +20,35 @@ templates = Jinja2Templates(directory="app/templates")
 UPLOAD_DIR = Path("app/static/img/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# Erlaubte Logo-Formate – MIME zusätzlich per Magic-Bytes prüfen
+ALLOWED_LOGO_EXTS = {".png", ".jpg", ".jpeg", ".svg", ".webp"}
+ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
+MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
+
+
+def _validate_logo_bytes(data: bytes, ext: str) -> tuple[bool, str]:
+    """Prüft Größe + (wenn möglich) MIME via filetype-Lib. SVG wird per Heuristik geprüft."""
+    if len(data) > MAX_LOGO_BYTES:
+        return False, f"Datei zu groß (max {MAX_LOGO_BYTES // 1024} KB)"
+    if ext == ".svg":
+        head = data[:512].lower()
+        if b"<svg" not in head:
+            return False, "Keine gültige SVG-Datei"
+        if b"<script" in data.lower():
+            return False, "SVG mit eingebettetem Script wird abgelehnt"
+        return True, ""
+    try:
+        import filetype  # type: ignore
+        kind = filetype.guess(data)
+        if kind is None:
+            return False, "Unbekanntes Dateiformat"
+        if kind.mime not in ALLOWED_LOGO_MIME:
+            return False, f"MIME-Typ {kind.mime} nicht erlaubt"
+        return True, ""
+    except ImportError:
+        # Lib noch nicht installiert: nur Extension prüfen
+        return True, ""
+
 
 # ── Organisations-Einstellungen ──────────────────────────────────────────────
 
@@ -85,15 +114,31 @@ async def save_org_settings(
 
     # Logo-Upload
     logo_path = None
+    upload_error: str | None = None
     if logo and logo.filename:
         ext = Path(logo.filename).suffix.lower()
-        if ext in {".png", ".jpg", ".jpeg", ".svg", ".webp"}:
-            dest = UPLOAD_DIR / f"logo_org{user.org_id}{ext}"
-            with dest.open("wb") as f:
-                shutil.copyfileobj(logo.file, f)
-            logo_path = f"/static/img/uploads/logo_org{user.org_id}{ext}"
-            if org:
-                org.logo_path = logo_path
+        if ext not in ALLOWED_LOGO_EXTS:
+            upload_error = "Dateityp nicht erlaubt (nur PNG/JPG/SVG/WEBP)"
+        else:
+            data = await logo.read()
+            ok, msg = _validate_logo_bytes(data, ext)
+            if not ok:
+                upload_error = msg
+            else:
+                dest = UPLOAD_DIR / f"logo_org{user.org_id}{ext}"
+                # Alte Datei mit anderer Extension löschen, damit es keine Mehrfachversionen gibt
+                for old_ext in ALLOWED_LOGO_EXTS:
+                    if old_ext != ext:
+                        old = UPLOAD_DIR / f"logo_org{user.org_id}{old_ext}"
+                        if old.exists():
+                            try:
+                                old.unlink()
+                            except OSError:
+                                pass
+                dest.write_bytes(data)
+                logo_path = f"/static/img/uploads/logo_org{user.org_id}{ext}"
+                if org:
+                    org.logo_path = logo_path
 
     # OrgSettings
     org_s = db.query(OrgSettings).filter(OrgSettings.org_id == user.org_id).first()
@@ -108,7 +153,35 @@ async def save_org_settings(
         org_s.logo_path = logo_path
 
     db.commit()
-    return RedirectResponse("/admin/settings?saved=1", status_code=303)
+    suffix = "&logo_error=" + upload_error.replace(" ", "%20") if upload_error else ""
+    return RedirectResponse(f"/admin/settings?saved=1{suffix}", status_code=303)
+
+
+@router.post("/settings/org/logo/reset")
+async def reset_org_logo(
+    request: Request,
+    db=Depends(get_db),
+    user: User = Depends(require_role("org_admin", "admin")),
+):
+    """Entfernt das hochgeladene Logo der Organisation; Standardlogo wird wieder verwendet."""
+    if not user.org_id:
+        return RedirectResponse("/admin/settings", status_code=303)
+    org = db.query(FireDept).filter(FireDept.id == user.org_id).first()
+    if org and org.logo_path:
+        # Datei aus dem Upload-Ordner löschen (Pfad muss unter UPLOAD_DIR liegen)
+        try:
+            rel = org.logo_path.lstrip("/")
+            target = Path("app") / rel.removeprefix("static/").lstrip("/") if rel.startswith("static/") else None
+            if target and UPLOAD_DIR in target.resolve().parents:
+                target.unlink(missing_ok=True)
+        except (OSError, ValueError):
+            pass
+        org.logo_path = None
+    org_s = db.query(OrgSettings).filter(OrgSettings.org_id == user.org_id).first()
+    if org_s:
+        org_s.logo_path = None
+    db.commit()
+    return RedirectResponse("/admin/settings?saved=1&logo=reset", status_code=303)
 
 
 # ── Organisations-Verwaltung (system_admin) ──────────────────────────────────

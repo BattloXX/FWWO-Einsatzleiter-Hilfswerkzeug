@@ -1,5 +1,11 @@
 <div class="card card--message {% if msg.is_done %}card--done{% endif %}"
-     data-uid="{{ msg.id }}" data-kind="message">
+     data-uid="{{ msg.id }}" data-kind="message"
+     style="cursor: pointer;"
+     hx-get="/einsatz/{{ incident.id }}/meldung/{{ msg.id }}/detail"
+     hx-target="#cardDetailBody"
+     hx-swap="innerHTML"
+     hx-trigger="click[!event.target.closest('select,input,button,a')]"
+     hx-on::after-swap="document.getElementById('cardDetailModal').showModal()">
   <div class="card__body">
     <div class="card__title">{{ msg.title }}</div>
     {% if msg.detail %}<div class="card__sub">{{ msg.detail }}</div>{% endif %}
@@ -9,7 +15,7 @@
   </div>
   {% if can_edit %}
   <div class="card__footer">
-    <button class="btn btn--xs btn--ghost"
+    <button class="btn btn--xs btn--ghost" title="Meldung als erledigt markieren"
             hx-post="/einsatz/{{ incident.id }}/meldung/{{ msg.id }}/erledigt"
             hx-swap="none">✓ Erledigt</button>
   </div>

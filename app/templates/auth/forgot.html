@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#b71921">
+  <title>Passwort vergessen – Einsatzleiter</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="login-body">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-logo">
+        <h1 class="login-logo__title">Passwort vergessen</h1>
+        <p class="login-logo__sub">Wir senden dir einen Reset-Link per E-Mail.</p>
+      </div>
+
+      {% if sent %}
+        <div class="alert alert--info">
+          Wenn ein Konto mit dieser E-Mail-Adresse existiert, wurde ein Reset-Link versendet.
+          Bitte prüfe auch den Spam-Ordner. Der Link ist 30 Minuten gültig.
+        </div>
+        <div style="text-align:center; margin-top:12px;">
+          <a href="/login" class="btn btn--ghost btn--sm">Zurück zum Login</a>
+        </div>
+      {% else %}
+        {% if error %}
+        <div class="alert alert--error">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/passwort-vergessen" class="login-form">
+          <div class="form-group">
+            <label for="email">E-Mail-Adresse</label>
+            <input type="email" id="email" name="email" required autofocus
+                   autocomplete="email" class="form-input"
+                   placeholder="dein.name@feuerwehr.example">
+          </div>
+          <button type="submit" class="btn btn--primary btn--full">Reset-Link senden</button>
+        </form>
+        <div style="text-align:center; margin-top:14px;">
+          <a href="/login" class="link-sm">← zurück zum Login</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

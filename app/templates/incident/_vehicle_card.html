@@ -1,11 +1,10 @@
 <div class="card card--vehicle" data-uid="{{ vehicle.id }}" data-kind="vehicle"
-     style="--org-color: {{ vehicle.vehicle_master.dept.color }}"
+     style="--org-color: {{ vehicle.vehicle_master.dept.color }}; cursor: pointer;"
      hx-get="/einsatz/{{ incident.id }}/fahrzeug/{{ vehicle.id }}/detail"
      hx-target="#cardDetailBody"
      hx-swap="innerHTML"
      hx-trigger="click[!event.target.closest('select,input,button')]"
-     hx-on::after-swap="document.getElementById('cardDetailModal').showModal()"
-     style="cursor:pointer">
+     hx-on::after-swap="document.getElementById('cardDetailModal').showModal()">
   <div class="card__status card__status--{{ vehicle.status_color }}"></div>
   <div class="card__body">
     <div class="card__title">

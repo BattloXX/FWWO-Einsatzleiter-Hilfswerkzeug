@@ -161,6 +161,127 @@ async def assign_task(
     return Response(status_code=204)
 
 
+# ── Fahrzeug hinzufügen (Inline-Wizard) ───────────────────────────────────────
+
+@router.get("/einsatz/{incident_id}/fahrzeug-vorschlaege")
+async def vehicle_suggestions(
+    incident_id: int, request: Request, db: Session = Depends(get_db),
+    q: str = "",
+):
+    """JSON-Endpoint: Vorschläge an Fahrzeugen, die zu diesem Einsatz hinzugefügt werden können.
+
+    Liefert VehicleMaster-Einträge der primären Org + kollaborierenden Orgs,
+    abzüglich der bereits aktuell zugewiesenen Fahrzeuge.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        return Response(status_code=401)
+    incident = _incident_or_404(incident_id, db)
+    if not has_role(user, "incident_leader", "admin", "recorder"):
+        return Response(status_code=403)
+
+    org_ids = set()
+    if incident.primary_org_id:
+        org_ids.add(incident.primary_org_id)
+    for io in (incident.collaborating_orgs or []):
+        org_ids.add(io.org_id)
+
+    already_master_ids = {
+        v.vehicle_master_id for v in incident.vehicles if v.removed_at is None
+    }
+    base_q = db.query(VehicleMaster).filter(
+        VehicleMaster.active == True,  # noqa: E712
+    )
+    if org_ids:
+        base_q = base_q.filter(VehicleMaster.dept_id.in_(org_ids))
+    if q:
+        like = f"%{q.strip()}%"
+        from sqlalchemy import or_ as _or
+        base_q = base_q.filter(
+            _or(VehicleMaster.code.ilike(like), VehicleMaster.name.ilike(like))
+        )
+    vehicles = base_q.order_by(VehicleMaster.display_order, VehicleMaster.code).all()
+    items = [
+        {
+            "id": v.id,
+            "code": v.code,
+            "name": v.name,
+            "type": v.type or "",
+            "dept_id": v.dept_id,
+            "dept_name": v.dept.name if v.dept else "",
+            "in_use": v.id in already_master_ids,
+        }
+        for v in vehicles
+    ]
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"items": items})
+
+
+@router.post("/einsatz/{incident_id}/fahrzeug-hinzufuegen")
+async def attach_vehicle_to_incident(
+    incident_id: int, request: Request,
+    vehicle_master_id: Optional[int] = Form(None),
+    new_code: str = Form(""),
+    new_name: str = Form(""),
+    new_type: str = Form(""),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    """Fügt ein Fahrzeug zum laufenden Einsatz hinzu — entweder per Master-ID oder
+    durch Anlegen eines neuen, nicht in den Stammdaten existierenden Fahrzeugs.
+    """
+    incident = _incident_or_404(incident_id, db)
+    db.refresh(incident, ["columns", "vehicles"])
+
+    # Stammfahrzeug bestimmen / neu anlegen
+    if vehicle_master_id:
+        vm = db.get(VehicleMaster, vehicle_master_id)
+        if not vm:
+            return Response("Fahrzeug nicht gefunden", status_code=404)
+    elif new_code.strip() and new_name.strip():
+        dept_id = incident.primary_org_id or request.state.user.org_id
+        if not dept_id:
+            return Response("Keine Organisation zugeordnet", status_code=400)
+        vm = VehicleMaster(
+            dept_id=dept_id,
+            code=new_code.strip()[:30],
+            name=new_name.strip()[:150],
+            type=(new_type.strip() or None),
+            is_first_train=False,
+            active=True,
+            display_order=999,
+        )
+        db.add(vm)
+        db.flush()
+    else:
+        return Response("vehicle_master_id ODER (new_code + new_name) erforderlich", status_code=400)
+
+    # Schon im Einsatz?
+    existing = next(
+        (v for v in incident.vehicles if v.vehicle_master_id == vm.id and v.removed_at is None),
+        None,
+    )
+    if existing:
+        return RedirectResponse(f"/einsatz/{incident_id}", status_code=303)
+
+    target_col = next((c for c in incident.columns if c.code == "dispatched"), None)
+    if target_col is None and incident.columns:
+        target_col = incident.columns[0]
+    if target_col is None:
+        return Response("Keine Spalte vorhanden", status_code=400)
+
+    iv = IncidentVehicle(
+        incident_id=incident.id,
+        column_id=target_col.id,
+        vehicle_master_id=vm.id,
+        display_order=999,
+    )
+    db.add(iv)
+    db.commit()
+    await manager.broadcast(incident_id, {"type": "vehicle_added", "reload_board": True})
+    return RedirectResponse(f"/einsatz/{incident_id}", status_code=303)
+
+
 # ── Fahrzeug verschieben ──────────────────────────────────────────────────────
 
 @router.post("/einsatz/{incident_id}/fahrzeug/{vehicle_id}/verschieben")
@@ -326,6 +447,40 @@ async def get_qr_code(incident_id: int, request: Request, db: Session = Depends(
     })
 
 
+@router.get("/einsatz/{incident_id}/qr/print", response_class=HTMLResponse)
+async def qr_print(incident_id: int, request: Request, db: Session = Depends(get_db)):
+    """Druckoptimierte Seite mit großem QR-Code + Einsatz-Eckdaten.
+    Wiederverwendung der Token-Logik von /qr."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    incident = _incident_or_404(incident_id, db)
+
+    token = sign_qr_token(incident_id, user.id)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    existing = db.query(IncidentToken).filter(
+        IncidentToken.incident_id == incident_id,
+        IncidentToken.issued_by_user_id == user.id,
+        IncidentToken.revoked_at.is_(None),
+    ).first()
+    if not existing:
+        from app.models.incident import IncidentToken as IT
+        db.add(IT(incident_id=incident_id, token_hash=token_hash, issued_by_user_id=user.id))
+        db.commit()
+
+    url = f"{request.base_url}qr-login?incident_id={incident_id}&token={token}"
+    # Größerer QR-Code für den Druck (box_size erhöht)
+    img = qrcode.make(url, box_size=14, border=2)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    img_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    return templates.TemplateResponse(request, "incident/qr_print.html", {
+        "incident": incident,
+        "qr_img": img_b64, "qr_url": url,
+    })
+
+
 # ── Verlauf / Historie ────────────────────────────────────────────────────────
 
 @router.get("/einsatz/{incident_id}/historie", response_class=HTMLResponse)
@@ -433,6 +588,99 @@ async def task_detail(
     return templates.TemplateResponse(request, "incident/_task_modal.html", {
         "user": user, "incident": incident, "task": task, "can_edit": can_edit,
     })
+
+
+# ── Meldungs-Detail / Edit-Modal ──────────────────────────────────────────────
+
+@router.get("/einsatz/{incident_id}/meldung/{message_id}/detail", response_class=HTMLResponse)
+async def message_detail(
+    incident_id: int, message_id: int, request: Request, db: Session = Depends(get_db)
+):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return Response("Nicht eingeloggt", status_code=401)
+    msg = db.get(Message, message_id)
+    if not msg or msg.incident_id != incident_id:
+        return Response("Nicht gefunden", status_code=404)
+    incident = _incident_or_404(incident_id, db)
+    can_edit = has_role(user, "incident_leader", "admin", "recorder")
+    return templates.TemplateResponse(request, "incident/_message_modal.html", {
+        "user": user, "incident": incident, "msg": msg, "can_edit": can_edit,
+    })
+
+
+@router.post("/einsatz/{incident_id}/meldung/{message_id}")
+async def update_message_endpoint(
+    incident_id: int, message_id: int, request: Request,
+    title: str = Form(...), detail: str = Form(""),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    msg = db.get(Message, message_id)
+    if not msg or msg.incident_id != incident_id:
+        return Response(status_code=404)
+    msg.title = title.strip() or msg.title
+    msg.detail = detail.strip() or None
+    db.commit()
+    await manager.broadcast(incident_id, {"type": "message_updated", "reload_board": True})
+    return RedirectResponse(f"/einsatz/{incident_id}", status_code=303)
+
+
+# ── Personen-Detail / Edit-Modal ──────────────────────────────────────────────
+
+@router.get("/einsatz/{incident_id}/person/{person_id}/detail", response_class=HTMLResponse)
+async def person_detail(
+    incident_id: int, person_id: int, request: Request, db: Session = Depends(get_db)
+):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return Response("Nicht eingeloggt", status_code=401)
+    person = db.get(RescuedPerson, person_id)
+    if not person or person.incident_id != incident_id:
+        return Response("Nicht gefunden", status_code=404)
+    incident = _incident_or_404(incident_id, db)
+    can_edit = has_role(user, "incident_leader", "admin", "recorder")
+    return templates.TemplateResponse(request, "incident/_person_modal.html", {
+        "user": user, "incident": incident, "person": person, "can_edit": can_edit,
+    })
+
+
+@router.post("/einsatz/{incident_id}/person/{person_id}")
+async def update_person_endpoint(
+    incident_id: int, person_id: int, request: Request,
+    gender: str = Form(""), person_group: str = Form(""),
+    age_range: str = Form(""), name: str = Form(""), location: str = Form(""),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    person = db.get(RescuedPerson, person_id)
+    if not person or person.incident_id != incident_id:
+        return Response(status_code=404)
+    if gender.strip():
+        person.gender = gender.strip()
+    if person_group.strip():
+        person.person_group = person_group.strip()
+    person.age_range = age_range.strip() or None
+    person.name = name.strip() or None
+    person.location = location.strip() or None
+    db.commit()
+    await manager.broadcast(incident_id, {"type": "person_updated", "reload_board": True})
+    return RedirectResponse(f"/einsatz/{incident_id}", status_code=303)
+
+
+@router.post("/einsatz/{incident_id}/person/{person_id}/loeschen")
+async def delete_person_endpoint(
+    incident_id: int, person_id: int, request: Request,
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    person = db.get(RescuedPerson, person_id)
+    if not person or person.incident_id != incident_id:
+        return Response(status_code=404)
+    db.delete(person)
+    db.commit()
+    await manager.broadcast(incident_id, {"type": "person_deleted", "reload_board": True})
+    return RedirectResponse(f"/einsatz/{incident_id}", status_code=303)
 
 
 @router.post("/einsatz/{incident_id}/aufgabe/{task_id}")

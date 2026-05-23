@@ -10,7 +10,8 @@
     <img src="data:image/png;base64,{{ qr_img }}" alt="QR-Code" class="qr-img">
     <p class="qr-hint">Diesen Code mit einem anderen Gerät scannen, um direkt dem Einsatz beizutreten.</p>
     <p class="qr-valid"><strong>Gültig bis Einsatzende.</strong></p>
-    <a href="{{ qr_url }}" class="btn btn--ghost btn--sm">Link kopieren</a>
+    <a href="{{ qr_url }}" class="btn btn--ghost btn--sm" title="QR-Ziel-URL öffnen">Link kopieren</a>
+    <a href="/einsatz/{{ incident.id }}/qr/print" target="_blank" rel="noopener" class="btn btn--primary btn--sm" title="Druckansicht mit großem QR und Einsatzdaten öffnen">🖨 QR-Code drucken</a>
   </div>
 </div>
 {% endblock %}

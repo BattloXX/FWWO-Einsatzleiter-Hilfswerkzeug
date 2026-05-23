@@ -1,19 +1,30 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.db import get_db
-from app.core.security import verify_password, sign_session, unsign_qr_token
+from app.config import settings
 from app.core.audit import write_audit
-from app.models.user import User
+from app.core.security import hash_api_key, sign_session, unsign_qr_token, verify_password
+from app.db import get_db
 from app.models.incident import Incident, IncidentToken
-from app.core.security import hash_api_key
+from app.models.user import User
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+
+def _set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        "session",
+        token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=settings.SESSION_MAX_AGE_SECONDS,
+    )
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -31,19 +42,68 @@ async def login(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.username == username, User.active == True).first()  # noqa: E712
-    if not user or not verify_password(password, user.password_hash):
+    """Login mit Account-Lockout (Phase 7).
+
+    - Bei Fehlversuch wird `failed_login_count` erhöht.
+    - Ab `LOGIN_MAX_FAILED` wird der Account `LOGIN_LOCKOUT_MINUTES` lang gesperrt.
+    - Während Lockout wird IMMER der gleiche generische Fehler gezeigt (kein Enumerations-Leak).
+    """
+    now = datetime.now(timezone.utc)
+    generic_error = "Benutzername oder Passwort falsch"
+
+    user = db.query(User).filter(User.username == username).first()
+    if not user or not user.active:
         return templates.TemplateResponse(
-            request, "login.html", {"error": "Benutzername oder Passwort falsch"},
+            request, "login.html", {"error": generic_error},
             status_code=401,
         )
-    user.last_login_at = datetime.now(timezone.utc)
-    write_audit(db, "auth.login", user_id=user.id, ip=request.client.host if request.client else None)
+
+    # Lockout-Status prüfen
+    if user.locked_until:
+        locked_until = user.locked_until
+        if locked_until.tzinfo is None:
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        if locked_until > now:
+            write_audit(db, "auth.login.locked", user_id=user.id,
+                        ip=request.client.host if request.client else None)
+            db.commit()
+            return templates.TemplateResponse(
+                request, "login.html",
+                {"error": "Account ist aktuell gesperrt. Bitte später erneut versuchen."},
+                status_code=401,
+            )
+        # Lockout abgelaufen – zurücksetzen
+        user.locked_until = None
+        user.failed_login_count = 0
+
+    if not verify_password(password, user.password_hash):
+        user.failed_login_count = (user.failed_login_count or 0) + 1
+        if user.failed_login_count >= settings.LOGIN_MAX_FAILED:
+            user.locked_until = now + timedelta(minutes=settings.LOGIN_LOCKOUT_MINUTES)
+            write_audit(db, "auth.login.lockout_triggered", user_id=user.id,
+                        ip=request.client.host if request.client else None,
+                        payload={"failed_count": user.failed_login_count})
+        else:
+            write_audit(db, "auth.login.failed", user_id=user.id,
+                        ip=request.client.host if request.client else None,
+                        payload={"failed_count": user.failed_login_count})
+        db.commit()
+        return templates.TemplateResponse(
+            request, "login.html", {"error": generic_error},
+            status_code=401,
+        )
+
+    # Erfolg
+    user.last_login_at = now
+    user.failed_login_count = 0
+    user.locked_until = None
+    write_audit(db, "auth.login", user_id=user.id,
+                ip=request.client.host if request.client else None)
     db.commit()
 
     token = sign_session(user.id)
     redirect = RedirectResponse("/", status_code=302)
-    redirect.set_cookie("session", token, httponly=True, samesite="lax", max_age=86400)
+    _set_session_cookie(redirect, token)
     return redirect
 
 
@@ -54,7 +114,7 @@ async def logout(request: Request, db: Session = Depends(get_db)):
         write_audit(db, "auth.logout", user_id=user.id)
         db.commit()
     response = RedirectResponse("/login", status_code=302)
-    response.delete_cookie("session")
+    response.delete_cookie("session", path="/")
     return response
 
 
@@ -69,7 +129,6 @@ async def qr_login(request: Request, token: str, incident_id: int, db: Session =
     if not incident or incident.status != "active":
         return RedirectResponse("/login?error=incident_closed", status_code=302)
 
-    # Check token in DB (not revoked)
     import hashlib
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     db_token = db.query(IncidentToken).filter(
@@ -85,11 +144,17 @@ async def qr_login(request: Request, token: str, incident_id: int, db: Session =
     if not user or not user.active:
         return RedirectResponse("/login", status_code=302)
 
+    # Org-Konsistenz prüfen (Phase 1): User muss zur Org des Einsatzes gehören
+    from app.core.permissions import can_access_incident
+    if not can_access_incident(user, incident):
+        return RedirectResponse("/login?error=qr_invalid", status_code=302)
+
+    user.last_login_at = datetime.now(timezone.utc)
     write_audit(db, "auth.qr_login", user_id=user_id, incident_id=incident_id,
                 ip=request.client.host if request.client else None)
     db.commit()
 
     session_token = sign_session(user.id)
     redirect = RedirectResponse(f"/einsatz/{incident_id}", status_code=302)
-    redirect.set_cookie("session", session_token, httponly=True, samesite="lax", max_age=86400)
+    _set_session_cookie(redirect, session_token)
     return redirect

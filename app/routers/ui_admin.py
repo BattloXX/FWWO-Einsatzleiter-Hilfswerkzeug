@@ -295,6 +295,84 @@ async def update_member_quali(
     return RedirectResponse("/admin/mitglieder?saved=1", status_code=303)
 
 
+# ── Mitglieder Excel-Import ───────────────────────────────────────────────────
+
+@router.post("/mitglieder/excel-import")
+async def import_members_excel(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("admin")),
+):
+    """Massimport von Mitgliedern aus einer Excel-Datei.
+
+    Erwartete Spalten (Groß-/Kleinschreibung egal):
+      Nachname / Lastname, Vorname / Firstname,
+      Telefon / Phone (optional), E-Mail / Email (optional)
+    """
+    import io as _io
+    try:
+        import openpyxl
+    except ImportError:
+        return RedirectResponse("/admin/mitglieder?error=openpyxl_missing", status_code=303)
+
+    raw = await file.read()
+    if not raw:
+        return RedirectResponse("/admin/mitglieder?error=empty_file", status_code=303)
+
+    try:
+        wb = openpyxl.load_workbook(_io.BytesIO(raw), read_only=True, data_only=True)
+        ws = wb.active
+    except Exception:
+        return RedirectResponse("/admin/mitglieder?error=invalid_excel", status_code=303)
+
+    # Build column index from header row
+    headers = [str(c.value or "").strip().lower() for c in next(ws.iter_rows(max_row=1))]
+    col_map: dict[str, int] = {}
+    for i, h in enumerate(headers):
+        if h in ("nachname", "lastname", "name"):
+            col_map.setdefault("lastname", i)
+        elif h in ("vorname", "firstname"):
+            col_map.setdefault("firstname", i)
+        elif h in ("telefon", "phone", "tel"):
+            col_map.setdefault("phone", i)
+        elif h in ("e-mail", "email", "mail"):
+            col_map.setdefault("email", i)
+
+    if "lastname" not in col_map or "firstname" not in col_map:
+        return RedirectResponse("/admin/mitglieder?error=missing_columns", status_code=303)
+
+    user = request.state.user
+    created = 0
+    skipped = 0
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        lastname = str(row[col_map["lastname"]] or "").strip()
+        firstname = str(row[col_map["firstname"]] or "").strip()
+        if not lastname or not firstname:
+            skipped += 1
+            continue
+        phone = str(row[col_map["phone"]] if "phone" in col_map and row[col_map["phone"]] else "").strip() or None
+        email = str(row[col_map["email"]] if "email" in col_map and row[col_map["email"]] else "").strip().lower() or None
+        # Skip exact duplicates (same name in same org)
+        existing = db.query(Member).filter(
+            Member.org_id == user.org_id,
+            Member.lastname == lastname,
+            Member.firstname == firstname,
+        ).first()
+        if existing:
+            skipped += 1
+            continue
+        db.add(Member(lastname=lastname, firstname=firstname, phone=phone, email=email,
+                      org_id=user.org_id, active=True))
+        created += 1
+
+    if created:
+        db.commit()
+        write_audit(db, "admin.member.excel_import", user_id=user.id,
+                    payload={"created": created, "skipped": skipped})
+    return RedirectResponse(f"/admin/mitglieder?saved=1&imported={created}&skipped={skipped}", status_code=303)
+
+
 # ── Benutzer Edit / Rollen / Passwort-Reset ───────────────────────────────────
 
 @router.post("/benutzer/{user_id}/edit")

@@ -203,7 +203,7 @@
         <div class="gallery-card__incident">
           {% set inc = m.task.incident if m.task and m.task.incident else none %}
           {% if inc %}
-          <a href="/archiv/{{ inc.id }}" onclick="event.stopPropagation()">
+          <a href="{% if inc.status == 'active' %}/einsatz/{{ inc.id }}{% else %}/archiv/{{ inc.id }}{% endif %}" onclick="event.stopPropagation()">
             {% if inc.nummer %}E-{{ inc.nummer }}{% else %}Einsatz #{{ inc.id }}{% endif %}
             · {{ inc.alarm_type_code }}
           </a>
@@ -218,6 +218,14 @@
           <span>{{ uploaders.get(m.uploaded_by_user_id, '–') }}</span>
           <span>{{ m.created_at|local_datetime }}</span>
         </div>
+        {% if m.task and inc and inc.status == 'active' %}
+        <div style="margin-top:5px;">
+          <a href="/einsatz/{{ inc.id }}" onclick="event.stopPropagation()"
+             style="font-size:.7rem;color:var(--primary,#b71921);text-decoration:none;">
+            → Zur Karte im Board
+          </a>
+        </div>
+        {% endif %}
       </div>
     </div>
     {% endfor %}

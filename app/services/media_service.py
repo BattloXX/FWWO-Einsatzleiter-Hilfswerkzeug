@@ -28,7 +28,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.incident import Task, TaskMedia
+from app.models.incident import Task, TaskMedia, Message, MessageMedia, RescuedPerson, PersonMedia
 from app.models.user import User
 
 logger = logging.getLogger("einsatzleiter.media")
@@ -66,6 +66,12 @@ def _storage_root() -> Path:
 
 def _task_dir(incident_id: int, task_id: int) -> Path:
     d = _storage_root() / str(incident_id) / str(task_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _entity_dir(incident_id: int, entity_type: str, entity_id: int) -> Path:
+    d = _storage_root() / str(incident_id) / entity_type / str(entity_id)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -292,8 +298,114 @@ async def store_upload(
     return UploadResult(media=media, warnings=warnings)
 
 
-def delete_media(media: TaskMedia, db: Session) -> None:
-    """Loescht TaskMedia-Eintrag inkl. zugehoeriger Dateien."""
+async def store_upload_for_message(
+    file: UploadFile, message: Message, user: User, db: Session,
+) -> "MessageMedia":
+    """Wie store_upload, aber fuer Message-Anhaenge."""
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Leere Datei.")
+    mime = _detect_mime(raw) or (file.content_type or "").lower()
+    if mime not in ALLOWED_MIMES:
+        raise HTTPException(415, f"Dateityp '{mime}' wird nicht unterstuetzt.")
+    kind = _kind_for_mime(mime)
+    if not kind:
+        raise HTTPException(415, f"Dateityp '{mime}' wird nicht unterstuetzt.")
+    if len(raw) > _size_limit_for_kind(kind):
+        limit_mb = _size_limit_for_kind(kind) // (1024 * 1024)
+        raise HTTPException(413, f"Datei zu gross. Limit fuer {kind}: {limit_mb} MB.")
+    dest_dir = _entity_dir(message.incident_id, "msg", message.id)
+    storage_root = _storage_root().resolve()
+    if kind == "image":
+        main_p, thumb_p, w, h, out_mime = _process_image(raw, dest_dir)
+        media = MessageMedia(
+            message_id=message.id, incident_id=message.incident_id,
+            uploaded_by_user_id=user.id, kind="image",
+            original_filename=file.filename or "image",
+            storage_path=str(main_p.resolve().relative_to(storage_root)).replace("\\", "/"),
+            thumb_path=str(thumb_p.resolve().relative_to(storage_root)).replace("\\", "/"),
+            mime_type=out_mime, bytes=main_p.stat().st_size, width=w, height=h,
+        )
+    elif kind == "pdf":
+        main_p, thumb_p, pages = _process_pdf(raw, dest_dir, file.filename or "document.pdf")
+        media = MessageMedia(
+            message_id=message.id, incident_id=message.incident_id,
+            uploaded_by_user_id=user.id, kind="pdf",
+            original_filename=file.filename or "document.pdf",
+            storage_path=str(main_p.resolve().relative_to(storage_root)).replace("\\", "/"),
+            thumb_path=str(thumb_p.resolve().relative_to(storage_root)).replace("\\", "/") if thumb_p else None,
+            mime_type="application/pdf", bytes=main_p.stat().st_size, pages=pages,
+        )
+    else:
+        main_p, thumb_p, w, h, dur = _process_video(raw, dest_dir)
+        media = MessageMedia(
+            message_id=message.id, incident_id=message.incident_id,
+            uploaded_by_user_id=user.id, kind="video",
+            original_filename=file.filename or "video.mp4",
+            storage_path=str(main_p.resolve().relative_to(storage_root)).replace("\\", "/"),
+            thumb_path=str(thumb_p.resolve().relative_to(storage_root)).replace("\\", "/") if thumb_p else None,
+            mime_type="video/mp4", bytes=main_p.stat().st_size, width=w, height=h, duration_s=dur,
+        )
+    db.add(media)
+    db.flush()
+    return media
+
+
+async def store_upload_for_person(
+    file: UploadFile, person: RescuedPerson, user: User, db: Session,
+) -> "PersonMedia":
+    """Wie store_upload, aber fuer Person-Anhaenge."""
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Leere Datei.")
+    mime = _detect_mime(raw) or (file.content_type or "").lower()
+    if mime not in ALLOWED_MIMES:
+        raise HTTPException(415, f"Dateityp '{mime}' wird nicht unterstuetzt.")
+    kind = _kind_for_mime(mime)
+    if not kind:
+        raise HTTPException(415, f"Dateityp '{mime}' wird nicht unterstuetzt.")
+    if len(raw) > _size_limit_for_kind(kind):
+        limit_mb = _size_limit_for_kind(kind) // (1024 * 1024)
+        raise HTTPException(413, f"Datei zu gross. Limit fuer {kind}: {limit_mb} MB.")
+    dest_dir = _entity_dir(person.incident_id, "person", person.id)
+    storage_root = _storage_root().resolve()
+    if kind == "image":
+        main_p, thumb_p, w, h, out_mime = _process_image(raw, dest_dir)
+        media = PersonMedia(
+            person_id=person.id, incident_id=person.incident_id,
+            uploaded_by_user_id=user.id, kind="image",
+            original_filename=file.filename or "image",
+            storage_path=str(main_p.resolve().relative_to(storage_root)).replace("\\", "/"),
+            thumb_path=str(thumb_p.resolve().relative_to(storage_root)).replace("\\", "/"),
+            mime_type=out_mime, bytes=main_p.stat().st_size, width=w, height=h,
+        )
+    elif kind == "pdf":
+        main_p, thumb_p, pages = _process_pdf(raw, dest_dir, file.filename or "document.pdf")
+        media = PersonMedia(
+            person_id=person.id, incident_id=person.incident_id,
+            uploaded_by_user_id=user.id, kind="pdf",
+            original_filename=file.filename or "document.pdf",
+            storage_path=str(main_p.resolve().relative_to(storage_root)).replace("\\", "/"),
+            thumb_path=str(thumb_p.resolve().relative_to(storage_root)).replace("\\", "/") if thumb_p else None,
+            mime_type="application/pdf", bytes=main_p.stat().st_size, pages=pages,
+        )
+    else:
+        main_p, thumb_p, w, h, dur = _process_video(raw, dest_dir)
+        media = PersonMedia(
+            person_id=person.id, incident_id=person.incident_id,
+            uploaded_by_user_id=user.id, kind="video",
+            original_filename=file.filename or "video.mp4",
+            storage_path=str(main_p.resolve().relative_to(storage_root)).replace("\\", "/"),
+            thumb_path=str(thumb_p.resolve().relative_to(storage_root)).replace("\\", "/") if thumb_p else None,
+            mime_type="video/mp4", bytes=main_p.stat().st_size, width=w, height=h, duration_s=dur,
+        )
+    db.add(media)
+    db.flush()
+    return media
+
+
+def delete_media(media, db: Session) -> None:
+    """Loescht einen Media-Eintrag (TaskMedia/MessageMedia/PersonMedia) inkl. Dateien."""
     storage_root = _storage_root()
     for rel in (media.storage_path, media.thumb_path):
         if not rel:

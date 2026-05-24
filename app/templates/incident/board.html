@@ -74,7 +74,8 @@
     {% if can_edit %}
     <div class="sidebar-box">
       <div class="sidebar-box__title" {{ tip('Neuen Auftrag in die Liste „Aufträge" einreihen') }}>Auftrag hinzufügen</div>
-      <form hx-post="/einsatz/{{ incident.id }}/aufgabe" hx-swap="none" @htmx:after-request="this.reset()">
+      <form hx-post="/einsatz/{{ incident.id }}/aufgabe" hx-swap="none"
+            @htmx:after-request="if(event.detail.successful){this.reset();location.reload();}">
         <div class="input-row">
           <input type="text" name="title" placeholder="Auftrag..." class="form-input" id="taskInput"
                  required autocomplete="off">
@@ -100,7 +101,8 @@
     <!-- Meldung hinzufügen -->
     <div class="sidebar-box">
       <div class="sidebar-box__title" {{ tip('Lagemeldung mit optionalem Erinnerungs-Timer anlegen') }}>Meldung hinzufügen <kbd>Strg+M</kbd></div>
-      <form hx-post="/einsatz/{{ incident.id }}/meldung" hx-swap="none" @htmx:after-request="this.reset()">
+      <form hx-post="/einsatz/{{ incident.id }}/meldung" hx-swap="none"
+            @htmx:after-request="if(event.detail.successful){this.reset();location.reload();}">
         <input type="text" name="title" placeholder="Meldung..." class="form-input" id="msgInput" required autocomplete="off">
         <div class="input-row">
           <input type="number" name="due_after_min" placeholder="Erinnerung in Min." class="form-input" min="0" value="0">
@@ -154,7 +156,7 @@
     {% set columns = incident.columns %}
     {% for col in columns %}
     {% set col_vehicles = incident.vehicles|selectattr('column_id', 'eq', col.id)|selectattr('removed_at', 'none')|list %}
-    {% set col_tasks = incident.tasks|selectattr('column_id', 'eq', col.id)|selectattr('vehicle_id', 'none')|list %}
+    {% set col_tasks = incident.tasks|selectattr('column_id', 'eq', col.id)|list %}
     {% set col_messages = incident.messages if col.code == 'messages' else [] %}
     {% set col_persons = incident.rescued_persons if col.code == 'rescued' else [] %}
     {% set col_count = col_vehicles|length + col_tasks|length + col_messages|length + col_persons|length %}
@@ -207,7 +209,7 @@
       <button type="button" @click="$el.closest('dialog').close()" class="modal__close">×</button>
     </div>
     <form hx-post="/einsatz/{{ incident.id }}/aufgabe" hx-swap="none"
-          @htmx:after-request="$el.reset(); $el.closest('dialog').close()">
+          @htmx:after-request="if(event.detail.successful){$el.reset();$el.closest('dialog').close();location.reload();}">
       <div class="modal__body">
         <input type="hidden" name="column_id" :value="colId">
         {% if task_suggestions %}
@@ -241,7 +243,7 @@
       <button type="button" @click="$el.closest('dialog').close()" class="modal__close">×</button>
     </div>
     <form hx-post="/einsatz/{{ incident.id }}/meldung" hx-swap="none"
-          @htmx:after-request="$el.reset(); $el.closest('dialog').close()">
+          @htmx:after-request="if(event.detail.successful){$el.reset();$el.closest('dialog').close();location.reload();}">
       <div class="modal__body">
         {% if msg_suggestions %}
         <div class="task-suggestions" style="margin-bottom:10px;">

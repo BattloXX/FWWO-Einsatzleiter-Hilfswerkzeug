@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.permissions import has_role
 from app.core.templating import templates
 from app.db import get_db
-from app.models.incident import Incident, Task, TaskMedia
+from app.models.incident import Incident, MessageMedia, PersonMedia, Task, TaskMedia
 from app.models.user import User
 from app.services.media_service import absolute_path, absolute_thumb_path
 
@@ -108,12 +108,7 @@ async def media_gallery(
     })
 
 
-@router.get("/medien/datei/{media_id}")
-async def serve_media_file(media_id: int, request: Request, db: Session = Depends(get_db)):
-    user = getattr(request.state, "user", None)
-    if not user:
-        return Response(status_code=401)
-    media = db.get(TaskMedia, media_id)
+def _serve_file(user, media, db):
     if not media:
         return Response(status_code=404)
     incident = db.get(Incident, media.incident_id)
@@ -125,12 +120,7 @@ async def serve_media_file(media_id: int, request: Request, db: Session = Depend
     return FileResponse(path, media_type=media.mime_type, filename=media.original_filename)
 
 
-@router.get("/medien/thumb/{media_id}")
-async def serve_media_thumb(media_id: int, request: Request, db: Session = Depends(get_db)):
-    user = getattr(request.state, "user", None)
-    if not user:
-        return Response(status_code=401)
-    media = db.get(TaskMedia, media_id)
+def _serve_thumb(user, media, db):
     if not media:
         return Response(status_code=404)
     incident = db.get(Incident, media.incident_id)
@@ -144,3 +134,51 @@ async def serve_media_thumb(media_id: int, request: Request, db: Session = Depen
         if path.exists():
             return FileResponse(path, media_type=media.mime_type)
     return Response(status_code=404)
+
+
+@router.get("/medien/datei/{media_id}")
+async def serve_media_file(media_id: int, request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return Response(status_code=401)
+    return _serve_file(user, db.get(TaskMedia, media_id), db)
+
+
+@router.get("/medien/thumb/{media_id}")
+async def serve_media_thumb(media_id: int, request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return Response(status_code=401)
+    return _serve_thumb(user, db.get(TaskMedia, media_id), db)
+
+
+@router.get("/medien/meldung/datei/{media_id}")
+async def serve_message_media_file(media_id: int, request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return Response(status_code=401)
+    return _serve_file(user, db.get(MessageMedia, media_id), db)
+
+
+@router.get("/medien/meldung/thumb/{media_id}")
+async def serve_message_media_thumb(media_id: int, request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return Response(status_code=401)
+    return _serve_thumb(user, db.get(MessageMedia, media_id), db)
+
+
+@router.get("/medien/person/datei/{media_id}")
+async def serve_person_media_file(media_id: int, request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return Response(status_code=401)
+    return _serve_file(user, db.get(PersonMedia, media_id), db)
+
+
+@router.get("/medien/person/thumb/{media_id}")
+async def serve_person_media_thumb(media_id: int, request: Request, db: Session = Depends(get_db)):
+    user = getattr(request.state, "user", None)
+    if not user:
+        return Response(status_code=401)
+    return _serve_thumb(user, db.get(PersonMedia, media_id), db)

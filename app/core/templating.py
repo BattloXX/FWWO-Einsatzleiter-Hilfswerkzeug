@@ -49,8 +49,35 @@ def _local(ctx, dt):
     return to_org_tz(dt, _ctx_org(ctx))
 
 
+_ACTION_LABELS: dict[str, str] = {
+    "incident.created":         "Einsatz gestartet",
+    "incident.closed":          "Einsatz abgeschlossen",
+    "column.created":           "Abschnitt angelegt",
+    "vehicle.moved":            "Einheit verschoben",
+    "vehicle.commander_set":    "Gruppenkommandant zugeteilt",
+    "vehicle.status_set":       "Status geändert",
+    "vehicle.updated":          "Einheit aktualisiert",
+    "task.created":             "Auftrag angelegt",
+    "task.updated":             "Auftrag bearbeitet",
+    "task.assigned":            "Auftrag einer Einheit zugeteilt",
+    "task.cancelled":           "Auftrag ausgeblendet",
+    "task.restored":            "Auftrag wiederhergestellt",
+    "task.status_set":          "Auftrag-Status geändert",
+    "message.created":          "Meldung angelegt",
+    "message.updated":          "Meldung bearbeitet",
+    "message.status_set":       "Meldungs-Status geändert",
+    "person.created":           "Person erfasst",
+    "person.updated":           "Person bearbeitet",
+}
+
+
+def _action_label(action: str) -> str:
+    return _ACTION_LABELS.get(action, action.replace(".", " → ").replace("_", " "))
+
+
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["local"] = _local
 templates.env.filters["local_time"] = _local_time
 templates.env.filters["local_datetime"] = _local_datetime
 templates.env.filters["local_iso"] = _local_iso
+templates.env.filters["action_label"] = _action_label

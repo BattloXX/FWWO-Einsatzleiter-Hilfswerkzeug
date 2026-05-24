@@ -211,6 +211,64 @@ class TaskMedia(Base):
     task: Mapped["Task"] = relationship(back_populates="media")
 
 
+class MessageMedia(Base):
+    """Bilder / PDFs / Videos, die einer Meldung (Message) angehaengt sind."""
+    __tablename__ = "message_media"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    message_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("message.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    incident_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    uploaded_by_user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("user.id", ondelete="SET NULL"), nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    thumb_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    duration_s: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    pages: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True,
+    )
+
+
+class PersonMedia(Base):
+    """Bilder / PDFs / Videos, die einer geretteten Person angehaengt sind."""
+    __tablename__ = "person_media"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    person_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("rescued_person.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    incident_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("incident.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    uploaded_by_user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("user.id", ondelete="SET NULL"), nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    thumb_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    duration_s: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    pages: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True,
+    )
+
+
 class Message(Base):
     __tablename__ = "message"
 
@@ -231,6 +289,12 @@ class Message(Base):
 
     incident: Mapped["Incident"] = relationship(back_populates="messages")
     vehicle: Mapped[Optional["IncidentVehicle"]] = relationship(foreign_keys=[vehicle_id])
+    media: Mapped[list["MessageMedia"]] = relationship(
+        cascade="all, delete-orphan",
+        order_by="MessageMedia.created_at.desc()",
+        primaryjoin="Message.id==MessageMedia.message_id",
+        foreign_keys="MessageMedia.message_id",
+    )
 
 
 class RescuedPerson(Base):
@@ -247,6 +311,12 @@ class RescuedPerson(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     incident: Mapped["Incident"] = relationship(back_populates="rescued_persons")
+    media: Mapped[list["PersonMedia"]] = relationship(
+        cascade="all, delete-orphan",
+        order_by="PersonMedia.created_at.desc()",
+        primaryjoin="RescuedPerson.id==PersonMedia.person_id",
+        foreign_keys="PersonMedia.person_id",
+    )
 
 
 class IncidentLog(Base):

@@ -11,7 +11,10 @@
 
 <div class="modal__body">
   {% if can_edit %}
-  <form method="post" action="/einsatz/{{ incident.id }}/aufgabe/{{ task.id }}" id="taskEditForm">
+  <form hx-post="/einsatz/{{ incident.id }}/aufgabe/{{ task.id }}"
+        hx-target="#cardDetailBody"
+        hx-swap="innerHTML"
+        id="taskEditForm">
     <div class="form-group">
       <label class="form-label">ÜBERSCHRIFT</label>
       <input type="text" name="title" class="form-input" value="{{ task.title }}" required>

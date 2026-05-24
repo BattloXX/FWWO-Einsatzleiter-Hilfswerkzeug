@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.core.permissions import require_role, has_role
 from app.core.templating import templates
-from app.models.incident import Incident, IncidentColumn, IncidentVehicle, Task, Message, RescuedPerson, IncidentToken, UNIT_STATUS_VALUES, TRAFFIC_LIGHT_VALUES
+from app.models.incident import Incident, IncidentColumn, IncidentVehicle, Task, Message, RescuedPerson, IncidentToken, MessageMedia, PersonMedia, UNIT_STATUS_VALUES, TRAFFIC_LIGHT_VALUES
 from app.models.master import AlarmType, TaskSuggestion, LageHint, VehicleMaster, Member, BOS_VALUES, MessageSuggestion
 from app.models.user import User, UserRole, Role
 from app.services.incident_service import (
@@ -717,7 +717,7 @@ async def message_detail(
     })
 
 
-@router.post("/einsatz/{incident_id}/meldung/{message_id}")
+@router.post("/einsatz/{incident_id}/meldung/{message_id}", response_class=HTMLResponse)
 async def update_message_endpoint(
     incident_id: int, message_id: int, request: Request,
     title: str = Form(...), detail: str = Form(""),
@@ -731,7 +731,11 @@ async def update_message_endpoint(
     msg.detail = detail.strip() or None
     db.commit()
     await manager.broadcast(incident_id, {"type": "message_updated", "reload_board": True})
-    return RedirectResponse(f"/einsatz/{incident_id}", status_code=303)
+    incident = _incident_or_404(incident_id, db)
+    can_edit = has_role(request.state.user, "incident_leader", "admin", "recorder")
+    return templates.TemplateResponse(request, "incident/_message_modal.html", {
+        "user": request.state.user, "incident": incident, "msg": msg, "can_edit": can_edit,
+    })
 
 
 # ── Personen-Detail / Edit-Modal ──────────────────────────────────────────────
@@ -753,7 +757,7 @@ async def person_detail(
     })
 
 
-@router.post("/einsatz/{incident_id}/person/{person_id}")
+@router.post("/einsatz/{incident_id}/person/{person_id}", response_class=HTMLResponse)
 async def update_person_endpoint(
     incident_id: int, person_id: int, request: Request,
     gender: str = Form(""), person_group: str = Form(""),
@@ -773,7 +777,11 @@ async def update_person_endpoint(
     person.location = location.strip() or None
     db.commit()
     await manager.broadcast(incident_id, {"type": "person_updated", "reload_board": True})
-    return RedirectResponse(f"/einsatz/{incident_id}", status_code=303)
+    incident = _incident_or_404(incident_id, db)
+    can_edit = has_role(request.state.user, "incident_leader", "admin", "recorder")
+    return templates.TemplateResponse(request, "incident/_person_modal.html", {
+        "user": request.state.user, "incident": incident, "person": person, "can_edit": can_edit,
+    })
 
 
 @router.post("/einsatz/{incident_id}/person/{person_id}/loeschen")
@@ -791,7 +799,7 @@ async def delete_person_endpoint(
     return RedirectResponse(f"/einsatz/{incident_id}", status_code=303)
 
 
-@router.post("/einsatz/{incident_id}/aufgabe/{task_id}")
+@router.post("/einsatz/{incident_id}/aufgabe/{task_id}", response_class=HTMLResponse)
 async def update_task_endpoint(
     incident_id: int, task_id: int, request: Request,
     title: str = Form(...), detail: str = Form(""),
@@ -804,7 +812,11 @@ async def update_task_endpoint(
     update_task(db, task, title, detail or None, user_id=request.state.user.id)
     db.commit()
     await manager.broadcast(incident_id, {"type": "task_updated", "reload_board": True})
-    return RedirectResponse(f"/einsatz/{incident_id}/aufgabe/{task_id}/detail", status_code=303)
+    incident = _incident_or_404(incident_id, db)
+    can_edit = has_role(request.state.user, "incident_leader", "admin", "recorder")
+    return templates.TemplateResponse(request, "incident/_task_modal.html", {
+        "user": request.state.user, "incident": incident, "task": task, "can_edit": can_edit,
+    })
 
 
 @router.post("/einsatz/{incident_id}/aufgabe/{task_id}/ausblenden")
@@ -880,6 +892,108 @@ async def delete_task_media(
     return templates.TemplateResponse(request, "incident/_task_media.html", {
         "user": user, "task": task, "incident": incident,
         "can_edit": can_edit, "errors": [],
+    })
+
+
+# ── Meldungs-Medien ──────────────────────────────────────────────────────────
+
+@router.post("/einsatz/{incident_id}/meldung/{message_id}/medien", response_class=HTMLResponse)
+async def upload_message_media(
+    incident_id: int, message_id: int, request: Request,
+    files: list[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    msg = db.get(Message, message_id)
+    if not msg or msg.incident_id != incident_id:
+        return Response(status_code=404)
+    from app.services.media_service import store_upload_for_message
+    from fastapi import HTTPException as _HE
+    for f in files:
+        if not f.filename:
+            continue
+        try:
+            await store_upload_for_message(f, msg, request.state.user, db)
+        except _HE:
+            pass
+    db.commit()
+    db.refresh(msg, ["media"])
+    incident = _incident_or_404(incident_id, db)
+    can_edit = has_role(request.state.user, "incident_leader", "admin", "recorder")
+    return templates.TemplateResponse(request, "incident/_message_modal.html", {
+        "user": request.state.user, "incident": incident, "msg": msg, "can_edit": can_edit,
+    })
+
+
+@router.post("/einsatz/{incident_id}/meldung/{message_id}/medien/{media_id}/loeschen", response_class=HTMLResponse)
+async def delete_message_media(
+    incident_id: int, message_id: int, media_id: int, request: Request,
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    from app.services.media_service import delete_media
+    media = db.get(MessageMedia, media_id)
+    if not media or media.message_id != message_id:
+        return Response(status_code=404)
+    delete_media(media, db)
+    db.commit()
+    msg = db.get(Message, message_id)
+    db.refresh(msg, ["media"])
+    incident = _incident_or_404(incident_id, db)
+    can_edit = has_role(request.state.user, "incident_leader", "admin", "recorder")
+    return templates.TemplateResponse(request, "incident/_message_modal.html", {
+        "user": request.state.user, "incident": incident, "msg": msg, "can_edit": can_edit,
+    })
+
+
+# ── Personen-Medien ───────────────────────────────────────────────────────────
+
+@router.post("/einsatz/{incident_id}/person/{person_id}/medien", response_class=HTMLResponse)
+async def upload_person_media(
+    incident_id: int, person_id: int, request: Request,
+    files: list[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    person = db.get(RescuedPerson, person_id)
+    if not person or person.incident_id != incident_id:
+        return Response(status_code=404)
+    from app.services.media_service import store_upload_for_person
+    from fastapi import HTTPException as _HE
+    for f in files:
+        if not f.filename:
+            continue
+        try:
+            await store_upload_for_person(f, person, request.state.user, db)
+        except _HE:
+            pass
+    db.commit()
+    db.refresh(person, ["media"])
+    incident = _incident_or_404(incident_id, db)
+    can_edit = has_role(request.state.user, "incident_leader", "admin", "recorder")
+    return templates.TemplateResponse(request, "incident/_person_modal.html", {
+        "user": request.state.user, "incident": incident, "person": person, "can_edit": can_edit,
+    })
+
+
+@router.post("/einsatz/{incident_id}/person/{person_id}/medien/{media_id}/loeschen", response_class=HTMLResponse)
+async def delete_person_media(
+    incident_id: int, person_id: int, media_id: int, request: Request,
+    db: Session = Depends(get_db),
+    _=Depends(require_role("incident_leader", "admin", "recorder")),
+):
+    from app.services.media_service import delete_media
+    media = db.get(PersonMedia, media_id)
+    if not media or media.person_id != person_id:
+        return Response(status_code=404)
+    delete_media(media, db)
+    db.commit()
+    person = db.get(RescuedPerson, person_id)
+    db.refresh(person, ["media"])
+    incident = _incident_or_404(incident_id, db)
+    can_edit = has_role(request.state.user, "incident_leader", "admin", "recorder")
+    return templates.TemplateResponse(request, "incident/_person_modal.html", {
+        "user": request.state.user, "incident": incident, "person": person, "can_edit": can_edit,
     })
 
 

@@ -8,7 +8,50 @@
 
 <div class="modal__body">
   {% if can_edit %}
-  <form method="post" action="/einsatz/{{ incident.id }}/person/{{ person.id }}" id="personEditForm">
+  <div id="personMediaSection" style="margin-bottom:12px;">
+    {% if person.media %}
+    <p class="form-label" style="margin-bottom:6px;">FOTOS / DOKUMENTE</p>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:6px; margin-bottom:8px;">
+      {% for m in person.media %}
+      <div style="position:relative; border:1px solid var(--border-color,#374151); border-radius:6px; overflow:hidden; background:var(--surface-2,#1f2937);">
+        {% if m.kind == 'image' %}
+        <a href="/medien/person/datei/{{ m.id }}" target="_blank">
+          <img src="/medien/person/thumb/{{ m.id }}" alt="{{ m.original_filename }}"
+               style="width:100%;aspect-ratio:1;object-fit:cover;display:block;">
+        </a>
+        {% else %}
+        <a href="/medien/person/datei/{{ m.id }}" target="_blank"
+           style="display:flex;flex-direction:column;align-items:center;justify-content:center;aspect-ratio:1;text-decoration:none;color:inherit;padding:4px;">
+          <span style="font-size:22px;">📄</span>
+          <span style="font-size:9px;">Datei</span>
+        </a>
+        {% endif %}
+        <form hx-post="/einsatz/{{ incident.id }}/person/{{ person.id }}/medien/{{ m.id }}/loeschen"
+              hx-target="#cardDetailBody" hx-swap="innerHTML" style="margin:0;">
+          <button type="submit"
+                  style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.75);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;"
+                  title="Löschen">×</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <form hx-post="/einsatz/{{ incident.id }}/person/{{ person.id }}/medien"
+          hx-encoding="multipart/form-data"
+          hx-target="#cardDetailBody"
+          hx-swap="innerHTML">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <input type="file" name="files" multiple accept="image/*,.pdf"
+               class="form-input" style="flex:1;min-width:140px;font-size:12px;padding:4px 8px;">
+        <button type="submit" class="btn btn--secondary btn--sm">Hochladen</button>
+      </div>
+    </form>
+  </div>
+
+  <form hx-post="/einsatz/{{ incident.id }}/person/{{ person.id }}"
+        hx-target="#cardDetailBody"
+        hx-swap="innerHTML"
+        id="personEditForm">
     <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
       <div class="form-group" style="flex:1; min-width:140px;">
         <label class="form-label">GESCHLECHT</label>

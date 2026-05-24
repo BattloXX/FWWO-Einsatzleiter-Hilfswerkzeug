@@ -216,7 +216,7 @@ def assign_task_to_vehicle(
 ) -> Task:
     before = {"vehicle_id": task.vehicle_id, "column_id": task.column_id}
     task.vehicle_id = vehicle.id
-    task.column_id = None
+    # Keep column_id so task remains visible on the board AND on the vehicle
     db.flush()
     write_incident_change(
         db, task.incident_id, "task.assigned", "task", task.id,
@@ -333,15 +333,12 @@ def set_unit_status(
 
 
 def list_commander_candidates(db: Session, org_ids: list[int]) -> list[Member]:
-    """Return active members with the GK (Gruppenkommandant) qualification."""
+    """Return all active members of the given organisations."""
     return (
         db.query(Member)
-        .join(MemberQualification, Member.id == MemberQualification.member_id)
-        .join(Qualification, MemberQualification.qualification_id == Qualification.id)
         .filter(
             Member.active.is_(True),
             Member.org_id.in_(org_ids),
-            Qualification.code == "GK",
         )
         .order_by(Member.lastname, Member.firstname)
         .all()

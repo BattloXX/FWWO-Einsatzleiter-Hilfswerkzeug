@@ -1,11 +1,14 @@
-"""SET NULL FK für incident_vehicle.commander_member_id (Mitglieder-Löschen-Bug)
+"""Model-Fix: commander_member_id ondelete=SET NULL (DB hatte das schon seit 0001)
 
 Revision ID: 0016
 Revises: 0015
 Create Date: 2026-05-25 21:00:00.000000
+
+Hintergrund: incident_vehicle.commander_member_id wurde in 0001 bereits mit
+ON DELETE SET NULL angelegt. Das SQLAlchemy-Model hatte das Attribut aber nicht
+gesetzt, weshalb ORM-seitige Cascade-Logik falsch lief. Diese Migration ist ein
+reiner Revisions-Bump — kein DDL nötig.
 """
-from alembic import op
-import sqlalchemy as sa
 
 
 revision = "0016"
@@ -15,22 +18,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # SQLite does not support ALTER COLUMN, so we use batch_alter_table which
-    # recreates the table with the updated FK definition.
-    with op.batch_alter_table("incident_vehicle", recreate="always") as batch:
-        batch.alter_column(
-            "commander_member_id",
-            existing_type=sa.BigInteger(),
-            nullable=True,
-        )
+    pass  # DDL already correct since 0001; only ORM model was updated.
 
 
 def downgrade() -> None:
-    # The ondelete behaviour is not stored in a way batch can undo selectively;
-    # recreating without it is sufficient for a downgrade path.
-    with op.batch_alter_table("incident_vehicle", recreate="always") as batch:
-        batch.alter_column(
-            "commander_member_id",
-            existing_type=sa.BigInteger(),
-            nullable=True,
-        )
+    pass

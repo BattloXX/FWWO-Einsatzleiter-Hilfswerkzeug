@@ -413,14 +413,19 @@ def set_unit_status(
 
 
 def list_commander_candidates(db: Session, org_ids: list[int]) -> list[Member]:
-    """Return active members with Gruppenkommandant qualification from the given organisations."""
+    """Return active members with Gruppenkommandant qualification.
+
+    Zeigt alle aktiven Mitglieder mit GK-Qualifikation, unabhängig von der
+    org_id-Zuweisung. In Single-Org-Installationen kann org_id der Mitglieder
+    von der primary_org_id des Einsatzes abweichen (z.B. nach Excel-Import),
+    weshalb hier bewusst kein org_id-Filter angewendet wird.
+    """
     return (
         db.query(Member)
         .join(MemberQualification, MemberQualification.member_id == Member.id)
         .join(Qualification, Qualification.id == MemberQualification.qualification_id)
         .filter(
             Member.active.is_(True),
-            Member.org_id.in_(org_ids),
             Qualification.is_gruppenkommandant.is_(True),
         )
         .order_by(Member.lastname, Member.firstname)
@@ -430,8 +435,12 @@ def list_commander_candidates(db: Session, org_ids: list[int]) -> list[Member]:
 
 
 def list_el_candidates(db: Session, org_ids: list[int]) -> list[Member]:
-    """Return active members with Einsatzleiter qualification from the given organisations."""
-    q = (
+    """Return active members with Einsatzleiter qualification.
+
+    Zeigt alle aktiven Mitglieder mit EL-Qualifikation, unabhängig von der
+    org_id-Zuweisung (siehe Kommentar bei list_commander_candidates).
+    """
+    return (
         db.query(Member)
         .join(MemberQualification, MemberQualification.member_id == Member.id)
         .join(Qualification, Qualification.id == MemberQualification.qualification_id)
@@ -439,10 +448,10 @@ def list_el_candidates(db: Session, org_ids: list[int]) -> list[Member]:
             Member.active.is_(True),
             Qualification.is_einsatzleiter.is_(True),
         )
+        .order_by(Member.lastname, Member.firstname)
+        .distinct()
+        .all()
     )
-    if org_ids:
-        q = q.filter(Member.org_id.in_(org_ids))
-    return q.order_by(Member.lastname, Member.firstname).distinct().all()
 
 
 def update_task(

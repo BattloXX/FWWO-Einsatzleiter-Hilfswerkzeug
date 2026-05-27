@@ -177,7 +177,12 @@ function incidentBoard(incidentId, alarm, startedAt) {
           }
           if (ev.type === 'pressure_logged') {
             window.dispatchEvent(new CustomEvent('breathing-pressure', {
-              detail: { troopId: ev.troop_id, lowestPressure: ev.lowest_pressure ?? ev.pressure }
+              detail: {
+                troopId: ev.troop_id,
+                lowestPressure: ev.lowest_pressure ?? ev.pressure,
+                memberId: ev.member_id ?? null,
+                pressure: ev.pressure,
+              }
             }));
           }
           if (ev.type === 'incident_closed') {
@@ -338,7 +343,13 @@ document.addEventListener('htmx:afterSwap', (e) => {
 /* ─── Offline: block writes with toast, reload on reconnect ─────── */
 document.addEventListener('htmx:responseError', (e) => {
   const xhr = e.detail.xhr;
-  if (xhr && (xhr.status === 503 || xhr.status === 0) && xhr.getResponseHeader && xhr.getResponseHeader('X-Offline') === '1') {
+  if (xhr && xhr.status === 403) {
+    let msg = 'Diese Aktion ist nicht erlaubt.';
+    try { msg = JSON.parse(xhr.responseText).detail || msg; } catch {}
+    const appEl = document.querySelector('[x-data="appState()"]');
+    if (appEl && window.Alpine) Alpine.$data(appEl).addToast(msg, 'warn');
+    e.preventDefault();
+  } else if (xhr && (xhr.status === 503 || xhr.status === 0) && xhr.getResponseHeader && xhr.getResponseHeader('X-Offline') === '1') {
     const appEl = document.querySelector('[x-data="appState()"]');
     if (appEl && window.Alpine) {
       Alpine.$data(appEl).addToast('Aktion erfordert Verbindung — du bist offline.', 'warn');

@@ -51,6 +51,7 @@ async def create_breathing_troop(
     name: str = Form(...),
     task_text: str = Form(""),
     vehicle_id: int | None = Form(None),
+    unit_name: str = Form(""),
     db: Session = Depends(get_db),
     _=Depends(require_role("breathing_supervisor", "incident_leader", "admin", "recorder")),
 ):
@@ -88,7 +89,8 @@ async def create_breathing_troop(
     troop = create_troop(
         db, incident_id=incident_id, name=name,
         members_data=members_data, task_text=task_text or None,
-        vehicle_id=vehicle_id, user_id=request.state.user.id,
+        vehicle_id=vehicle_id, unit_name=unit_name.strip() or None,
+        user_id=request.state.user.id,
     )
     db.commit()
     await manager.broadcast(incident_id, {"type": "troop_created", "reload_breathing": True})
@@ -147,6 +149,7 @@ async def log_pressure_view(
     lowest = updated_troop.lowest_current_pressure or pressure_bar
     await manager.broadcast(incident_id, {
         "type": "pressure_logged", "troop_id": troop_id,
+        "member_id": member_id,
         "pressure": pressure_bar, "lowest_pressure": lowest, "warning": warning,
     })
     return Response(status_code=204)

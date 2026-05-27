@@ -1,35 +1,57 @@
-/* ─── Sortable Glue – DnD für das Kanban-Board ──────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+ * sortable-glue.js  –  Drag & Drop für das Kanban-Board
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- * ARCHITEKTUR – BITTE VOR ÄNDERUNGEN LESEN:
+ * ⚠️  ACHTUNG – DIESE DATEI NICHT OHNE VOLLSTÄNDIGES LESEN ÄNDERN ⚠️
+ *
+ * Falsche Änderungen hier führen zu:
+ *   • Doppelten POST-Requests (Karte springt zurück)
+ *   • Drag & Drop bricht nach erstem Ziehen ab
+ *   • Touch/Tablet-Drag funktioniert nicht mehr
+ *   • HTMX-Re-Renders zerstören Sortable-Instanzen dauerhaft
+ *
+ * ARCHITEKTUR – PFLICHTLEKTÜRE VOR JEDER ÄNDERUNG:
  *
  *  1. NUR onEnd verwenden, KEIN onAdd.
  *     onEnd feuert immer auf der SOURCE-Liste (egal ob Reorder oder Cross-Zone).
  *     onAdd würde zusätzlich auf der DESTINATION feuern → doppelter POST.
+ *     Jede andere Kombination ist bereits getestet und führt zu Bugs.
  *
- *  2. handle: '.card' gilt NUR für Spalten-Zonen.
+ *  2. evt.item.removeAttribute('draggable') NICHT aufrufen.
+ *     SortableJS verwaltet das draggable-Attribut intern. Externe Manipulation
+ *     bricht den nächsten Drag auf Desktop-Browsern (getesteter Regression-Bug).
+ *
+ *  3. delayOnTouchOnly: true ist PFLICHT.
+ *     Ohne dieses Flag gilt delay:200 auch für Mausklicks → Klick auf Karten
+ *     fühlt sich eingefroren an und öffnet Details nicht zuverlässig.
+ *
+ *  4. handle: '.card' gilt NUR für Spalten-Zonen.
  *     In Fahrzeug-Zonen (sortable-zone--vehicle) kein handle setzen,
  *     damit das ganze Mini-Item-Element draggable ist.
  *
- *  3. Re-Init nach HTMX-Swaps läuft über scheduleInit() mit 100 ms Debounce,
- *     damit schnell aufeinander folgende HTMX-Events nicht mehrfach initialisieren.
- *     _NICHT_ auf setTimeout(initSortable, 0) oder direkt reagieren.
+ *  5. Re-Init nach HTMX-Swaps läuft über scheduleInit() mit 150 ms Debounce.
+ *     _NICHT_ auf setTimeout(initSortable, 0) oder direkt auf HTMX-Events reagieren.
+ *     Schnell aufeinanderfolgende Events (afterSwap + oobAfterSwap + load)
+ *     würden sonst initSortable() 3× aufrufen → Race-Condition.
  *
- *  4. Neue Kartentypen (kind) müssen in postMove() als eigener case ergänzt
- *     werden (analog 'task', 'message', 'vehicle', 'person').
- *
- *  5. Sortable-Instanzen werden über zone._sortableInstance verfolgt.
- *     Bei DOM-Replacement durch HTMX wird das alte Element (incl. Instanz) GC'd;
+ *  6. Sortable-Instanzen werden über zone._sortableInstance verfolgt.
+ *     Bei DOM-Replacement durch HTMX wird das alte Element (inkl. Instanz) GC'd;
  *     das neue Element bekommt beim nächsten scheduleInit() eine frische Instanz.
+ *     destroyExistingSortable() nur als Sicherheitsnetz, nicht als Haupt-Cleanup.
  *
- *  6. postMove() sendet keinen CSRF-Header – der Endpoint ist rate-limited per
- *     Session-Cookie. Falls CSRF-Middleware eingebaut wird, muss hier ein
- *     X-CSRF-Token-Header ergänzt werden.
- */
+ *  7. postMove() sendet keinen CSRF-Header – Endpoint ist per Session-Cookie
+ *     rate-limited. Falls CSRF-Middleware ergänzt wird, X-CSRF-Token-Header hier
+ *     eintragen (analog zu csrf.js).
+ *
+ *  8. Tablet-Kompatibilität: fallbackTolerance + touchStartThreshold sind
+ *     bewusst gesetzt, um Scroll von Drag zu unterscheiden. Nicht erhöhen
+ *     (DnD unbrauchbar) und nicht senken (Scroll bricht ab).
+ * ═══════════════════════════════════════════════════════════════════════════ */
 
 (function () {
   'use strict';
 
-  // ── Drag-Hover-Tab-Switch (mobile Lane-Wechsel während Drag) ────────────────
+  // ── Drag-Hover-Tab-Switch (mobile/Tablet Lane-Wechsel während Drag) ──────────
   let _dragging = false;
   let _hoverTabId = null;
   let _hoverStart = 0;
@@ -88,7 +110,9 @@
       _dragging = false;
       _hoverTabId = null;
       document.body.classList.remove('dnd-active');
-      evt.item.removeAttribute('draggable');
+      // ⚠️ evt.item.removeAttribute('draggable') NICHT aufrufen –
+      //    SortableJS verwaltet dieses Attribut selbst; externe Manipulation
+      //    bricht den nächsten Drag (getesteter Bug, nicht entfernen!).
 
       try {
         const card = evt.item;
@@ -106,8 +130,7 @@
         if (toZone.classList.contains('sortable-zone--vehicle')) {
           const vehicleId = toZone.dataset.vehicleId;
           if (!vehicleId) return;
-          // Ein Fahrzeug auf ein anderes Fahrzeug zu droppen ergibt keinen Sinn
-          if (kind === 'vehicle') return;
+          if (kind === 'vehicle') return; // Fahrzeug auf Fahrzeug ergibt keinen Sinn
           postMove(incidentId, { kind, uid, vehicle_id: vehicleId, position });
           return;
         }
@@ -131,7 +154,7 @@
     _initTimer = setTimeout(function () {
       _initTimer = null;
       initSortable();
-    }, 100);
+    }, 150);
   }
 
   // ── Haupt-Initialisierung ────────────────────────────────────────────────────
@@ -141,14 +164,25 @@
     attachDragTabSwitch();
 
     const onEnd = makeOnEnd(incidentId);
+
+    // ⚠️ Optionen: Werte hier sind für Desktop UND Tablet/Touch kalibriert.
+    //    Änderungen an delay, delayOnTouchOnly, touchStartThreshold oder
+    //    fallbackTolerance können DnD auf einer oder beiden Plattformen brechen.
     const commonOpts = {
       group: { name: 'kanban', pull: true, put: true },
       animation: 150,
       ghostClass: 'card--ghost',
       chosenClass: 'card--chosen',
       dragClass: 'card--drag',
-      delay: 150,
-      touchStartThreshold: 4,
+      // Delay NUR für Touch – Mausklicks dürfen nicht verzögert werden
+      delay: 200,
+      delayOnTouchOnly: true,
+      // Touch: 8px Threshold unterscheidet Scroll von Drag (Tablet-kalibriert)
+      touchStartThreshold: 8,
+      // Fallback-Toleranz für Browser ohne nativem DnD (iPad Safari, etc.)
+      fallbackTolerance: 5,
+      fallbackOnBody: true,
+      forceFallback: false, // Nur bei DnD-Problemen auf spez. Geräten auf true setzen
       preventOnFilter: false,
       filter: 'select,input,button,.task-check,a,label',
       onStart() {
@@ -167,6 +201,7 @@
       zone._sortableInstance = new Sortable(zone, {
         ...commonOpts,
         // Spalte: ganze .card als Drag-Griff (Vehicle/Task/Message/Person-Karten)
+        // ⚠️ handle NICHT entfernen – sonst sind interaktive Elemente in Karten nicht klickbar
         handle: '.card',
       });
     });
@@ -193,10 +228,11 @@
     initSortable();
   }
 
-  // Re-Init nach HTMX-Swaps – alle drei Events laufen durch denselben
-  // Debounce, sodass nur ein einziger initSortable()-Aufruf erfolgt.
-  document.body.addEventListener('htmx:afterSwap', scheduleInit);
+  // Re-Init nach HTMX-Swaps – alle Events laufen durch denselben Debounce,
+  // sodass nur ein einziger initSortable()-Aufruf erfolgt.
+  // ⚠️ Keine weiteren Event-Listener hier ergänzen ohne den Debounce zu erhöhen.
+  document.body.addEventListener('htmx:afterSwap',    scheduleInit);
   document.body.addEventListener('htmx:oobAfterSwap', scheduleInit);
-  document.body.addEventListener('htmx:load', scheduleInit);
-  document.body.addEventListener('htmx:afterSettle', scheduleInit);
+  document.body.addEventListener('htmx:load',         scheduleInit);
+  document.body.addEventListener('htmx:afterSettle',  scheduleInit);
 })();

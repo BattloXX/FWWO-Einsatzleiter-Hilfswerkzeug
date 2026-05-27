@@ -12,6 +12,33 @@
   }
   .sidebar--collapsed { width: 0 !important; padding: 0 !important; border-right: none !important; }
   .kanban { flex: 1; display: flex; overflow-x: auto; gap: 10px; padding: 12px; }
+
+  /* Lage-Ticker im Desktop-Header */
+  .header-lage-ticker {
+    display: none; /* Mobile: ausgeblendet */
+    align-items: center;
+    gap: 6px;
+    background: rgba(146, 100, 0, 0.2);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 5px;
+    padding: 3px 10px;
+    max-width: 320px;
+    min-width: 140px;
+    flex-shrink: 1;
+    overflow: hidden;
+  }
+  .header-lage-ticker__icon { color: #f59e0b; flex-shrink: 0; font-size: .9rem; }
+  .header-lage-ticker__text {
+    font-size: .78rem;
+    color: #fde68a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: opacity .35s ease;
+  }
+  @media (min-width: 1200px) {
+    .header-lage-ticker { display: flex; }
+  }
 </style>
 {% endblock %}
 
@@ -37,6 +64,14 @@
       <span class="last-update__time" x-text="lastUpdateDisplay">–</span>
     </span>
   </div>
+  {% if lage_hints %}
+  <div class="header-lage-ticker"
+       x-data='lageTicker({{ lage_hints|map(attribute="text")|list|tojson }})'
+       x-init="init()">
+    <span class="header-lage-ticker__icon">ℹ</span>
+    <span class="header-lage-ticker__text" x-text="currentHint"></span>
+  </div>
+  {% endif %}
   <div class="incident-header__actions">
     <a href="/einsatz/{{ incident.id }}/atemschutz" class="btn btn--sm btn--secondary"
        {{ tip('Atemschutzüberwachung — Pressluft-Trupp-Steuerung') }}>AS-Überwachung</a>

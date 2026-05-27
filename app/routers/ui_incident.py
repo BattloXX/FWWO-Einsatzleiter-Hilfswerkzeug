@@ -216,6 +216,7 @@ async def incident_dashboard(
             person_stats[p.status].append(p)
 
     started_at_iso = incident.started_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+    lage_hints = db.query(LageHint).order_by(LageHint.display_order).all()
 
     return templates.TemplateResponse(
         request,
@@ -232,6 +233,7 @@ async def incident_dashboard(
             "msgs_done": msgs_done,
             "person_stats": person_stats,
             "started_at_iso": started_at_iso,
+            "lage_hints": lage_hints,
         },
     )
 

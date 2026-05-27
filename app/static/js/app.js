@@ -172,7 +172,14 @@ function incidentBoard(incidentId, alarm, startedAt) {
               location.reload();
             }
           }
-          if (ev.reload_breathing) { /* handled by breathing board */ }
+          if (ev.reload_breathing || ev.type === 'troop_created' || ev.type === 'troop_started' || ev.type === 'troop_status_changed') {
+            if (document.getElementById('troopsGrid')) location.reload();
+          }
+          if (ev.type === 'pressure_logged') {
+            window.dispatchEvent(new CustomEvent('breathing-pressure', {
+              detail: { troopId: ev.troop_id, lowestPressure: ev.lowest_pressure ?? ev.pressure }
+            }));
+          }
           if (ev.type === 'incident_closed') {
             window.location.href = `/archiv/${id}`;
           }

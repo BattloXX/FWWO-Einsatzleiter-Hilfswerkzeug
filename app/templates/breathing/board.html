@@ -286,6 +286,17 @@
           <label>Auftrag</label>
           <input type="text" name="task_text" class="form-input" placeholder="Innenangriff...">
         </div>
+        {% if vehicles %}
+        <div class="form-group">
+          <label>Fahrzeug</label>
+          <select name="vehicle_id" class="form-select">
+            <option value="">— kein Fahrzeug —</option>
+            {% for v in vehicles %}
+            <option value="{{ v.id }}">{{ v.vehicle_master.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
       </div>
 
       <p class="form-hint" style="margin-bottom:8px;">
@@ -308,16 +319,22 @@
               <option value="truppmann">TM</option>
             </select>
 
-            <!-- Pressure picker per member -->
+            <!-- Pressure picker per member (fixed positioning to escape modal overflow) -->
             <input :name="`member_${i}_press`" type="hidden" :value="m.press">
             <div class="press-picker-wrap" @click.outside="m.pickerOpen = false">
               <button type="button"
                       class="btn btn--ghost btn--sm press-trigger"
                       :class="{ 'press-trigger--set': m.press }"
-                      @click="m.pickerOpen = !m.pickerOpen">
+                      @click="
+                        const r = $event.currentTarget.getBoundingClientRect();
+                        m.pickerLeft = Math.max(4, Math.min(r.left, window.innerWidth - 284));
+                        m.pickerTop = r.bottom + 4;
+                        m.pickerOpen = !m.pickerOpen;
+                      ">
                 <span x-text="m.press ? m.press + ' bar' : 'Druck *'"></span>
               </button>
-              <div x-show="m.pickerOpen" class="press-picker-popup">
+              <div x-show="m.pickerOpen" class="press-picker-popup"
+                   :style="`position:fixed; top:${m.pickerTop}px; left:${m.pickerLeft}px; right:auto; z-index:9999;`">
                 <div class="press-grid">
                   <template x-for="val in pressValues" :key="val">
                     <button type="button"
@@ -341,7 +358,7 @@
         </template>
       </div>
       <button type="button"
-              @click="members.push({id:'',name:'',press:null,pickerOpen:false})"
+              @click="members.push({id:'',name:'',press:null,pickerOpen:false,pickerTop:0,pickerLeft:0})"
               class="btn btn--ghost btn--sm">+ Mitglied</button>
     </div>
     <div class="modal__footer">
@@ -371,8 +388,9 @@ function troopCard(currentPress, maxPress, withdrawPress, lastLogIso) {
     },
 
     init() {
-      if (!this.lastLog) { this.timeAgo = 'Kein Messwert'; return; }
+      const troopId = parseInt(this.$el.id.replace('troop-', ''));
       const update = () => {
+        if (!this.lastLog) { this.timeAgo = 'Kein Messwert'; return; }
         const sec = Math.floor((new Date() - this.lastLog) / 1000);
         if (sec < 60) {
           this.timeAgo = `vor ${sec} Sek.`;
@@ -382,7 +400,14 @@ function troopCard(currentPress, maxPress, withdrawPress, lastLogIso) {
         }
       };
       update();
-      setInterval(update, 1000);
+      if (this.lastLog) setInterval(update, 1000);
+      window.addEventListener('breathing-pressure', (e) => {
+        if (e.detail.troopId === troopId) {
+          this.currentPress = e.detail.lowestPressure;
+          this.lastLog = new Date();
+          update();
+        }
+      });
     }
   };
 }
@@ -411,9 +436,9 @@ function troopTimer(entryAt, backAt) {
 function newTroopForm() {
   return {
     members: [
-      {id:'', name:'', press:null, pickerOpen:false},
-      {id:'', name:'', press:null, pickerOpen:false},
-      {id:'', name:'', press:null, pickerOpen:false},
+      {id:'', name:'', press:null, pickerOpen:false, pickerTop:0, pickerLeft:0},
+      {id:'', name:'', press:null, pickerOpen:false, pickerTop:0, pickerLeft:0},
+      {id:'', name:'', press:null, pickerOpen:false, pickerTop:0, pickerLeft:0},
     ],
     pressValues: Array.from({length: 35}, (_, i) => 350 - i * 10),
 

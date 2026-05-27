@@ -748,7 +748,7 @@ async def get_qr_code(incident_id: int, request: Request, db: Session = Depends(
     token = sign_qr_token(incident_id, user.id)
     token_hash = hashlib.sha256(token.encode()).hexdigest()
 
-    # Store token in DB (upsert per user+incident)
+    # Store token in DB (upsert per user+incident) – always update hash so new token validates
     existing = db.query(IncidentToken).filter(
         IncidentToken.incident_id == incident_id,
         IncidentToken.issued_by_user_id == user.id,
@@ -757,7 +757,9 @@ async def get_qr_code(incident_id: int, request: Request, db: Session = Depends(
     if not existing:
         from app.models.incident import IncidentToken as IT
         db.add(IT(incident_id=incident_id, token_hash=token_hash, issued_by_user_id=user.id))
-        db.commit()
+    else:
+        existing.token_hash = token_hash
+    db.commit()
 
     url = f"{request.base_url}qr-login?incident_id={incident_id}&token={token}"
     img = qrcode.make(url)
@@ -790,7 +792,9 @@ async def qr_print(incident_id: int, request: Request, db: Session = Depends(get
     if not existing:
         from app.models.incident import IncidentToken as IT
         db.add(IT(incident_id=incident_id, token_hash=token_hash, issued_by_user_id=user.id))
-        db.commit()
+    else:
+        existing.token_hash = token_hash
+    db.commit()
 
     url = f"{request.base_url}qr-login?incident_id={incident_id}&token={token}"
     # Größerer QR-Code für den Druck (box_size erhöht)

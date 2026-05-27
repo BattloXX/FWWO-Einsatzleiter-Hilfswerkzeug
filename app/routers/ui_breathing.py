@@ -31,8 +31,9 @@ async def breathing_board(incident_id: int, request: Request, db: Session = Depe
     if not incident:
         from fastapi import HTTPException
         raise HTTPException(404)
-    db.refresh(incident, ["breathing_troops"])
+    db.refresh(incident, ["breathing_troops", "vehicles"])
     members = db.query(Member).filter(Member.active == True).order_by(Member.lastname).all()  # noqa: E712
+    vehicles = [v for v in incident.vehicles if not v.removed_at]
 
     troops_with_warnings = [
         (t, get_warning_level(t)) for t in incident.breathing_troops
@@ -40,6 +41,7 @@ async def breathing_board(incident_id: int, request: Request, db: Session = Depe
     return templates.TemplateResponse(request, "breathing/board.html", {
         "user": user, "incident": incident,
         "troops_with_warnings": troops_with_warnings, "members": members,
+        "vehicles": vehicles,
     })
 
 
@@ -140,9 +142,11 @@ async def log_pressure_view(
         return Response(status_code=404)
     log_pressure(db, troop, member_id, pressure_bar, recorded_by_user_id=request.state.user.id)
     db.commit()
-    warning = get_warning_level(db.get(BreathingTroop, troop_id))
+    updated_troop = db.get(BreathingTroop, troop_id)
+    warning = get_warning_level(updated_troop)
+    lowest = updated_troop.lowest_current_pressure or pressure_bar
     await manager.broadcast(incident_id, {
         "type": "pressure_logged", "troop_id": troop_id,
-        "pressure": pressure_bar, "warning": warning,
+        "pressure": pressure_bar, "lowest_pressure": lowest, "warning": warning,
     })
     return Response(status_code=204)

@@ -141,30 +141,6 @@
     }
     .hdr-incident__address::before { content: '📍 '; }
 
-    /* Lage-Ticker inline im Header */
-    .hdr-lage {
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      gap: .5rem;
-      background: rgba(146,100,0,.35);
-      border: 1px solid rgba(245,158,11,.4);
-      border-radius: .4rem;
-      padding: .4rem .93rem;
-      max-width: 22rem;
-      min-width: 12rem;
-      overflow: hidden;
-    }
-    .hdr-lage__icon { font-size: 1rem; flex-shrink: 0; }
-    .hdr-lage__text {
-      font-size: .88rem;
-      color: #fde68a;
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      transition: opacity .35s ease;
-    }
 
     /* Right side: EL + Timer + Clock */
     .hdr-right {
@@ -505,6 +481,12 @@
   <header class="hdr">
     <div class="hdr-left">
 
+      <!-- Logo -->
+      <img src="/static/img/logo-trans.png" alt="einsatzleiter.cloud"
+           style="height:2.8rem; width:auto; flex-shrink:0; opacity:.9;">
+
+      <div class="hdr-vsep"></div>
+
       <!-- Alarm badge -->
       <div class="alarm-badge">{{ incident.alarm_type_code or '?' }}</div>
 
@@ -517,7 +499,6 @@
         {% endif %}
         <div class="hdr-incident__label">Einsatzgrund &amp; Ort</div>
         <div class="hdr-incident__title">
-          {% if incident.nummer %}<span style="opacity:.55;font-size:1rem;">#{{ incident.nummer }} &nbsp;</span>{% endif %}
           {% if incident.reason %}{{ incident.reason }}
           {% elif incident.report_text %}{{ incident.report_text[:130] }}
           {% else %}Einsatz {{ incident.id }}{% endif %}
@@ -529,15 +510,6 @@
         {% endif %}
       </div>
 
-      <!-- Lage-Ticker (inline, if hints exist) -->
-      {% if lage_hints %}
-      <div class="hdr-vsep"></div>
-      <div class="hdr-lage">
-        <span class="hdr-lage__icon">ℹ</span>
-        <span class="hdr-lage__text" id="headerTicker">{{ lage_hints[0].text }}</span>
-      </div>
-      {% endif %}
-
     </div>
 
     <!-- Right: EL + Timer + Clock -->
@@ -545,9 +517,7 @@
 
       <div class="hdr-block">
         <div class="hdr-block__label">Einsatzleiter</div>
-        {% if incident.leader %}
-          <div class="hdr-block__value">{{ incident.leader.display_name }}</div>
-        {% elif incident.leader_member %}
+        {% if incident.leader_member %}
           <div class="hdr-block__value">{{ incident.leader_member.full_name }}</div>
         {% else %}
           <div class="hdr-block__value" style="color:#fbbf24;">nicht zugewiesen</div>
@@ -927,14 +897,14 @@
   const hints = {{ lage_hints|map(attribute="text")|list|tojson if lage_hints else '[]' }};
   if (hints.length > 1) {
     let idx = 0;
-    const targets = ['lageTicker', 'headerTicker'].map(id => document.getElementById(id)).filter(Boolean);
-    setInterval(() => {
-      idx = (idx + 1) % hints.length;
-      targets.forEach(el => {
-        el.style.opacity = '0';
-        setTimeout(() => { el.textContent = hints[idx]; el.style.opacity = '1'; }, 380);
-      });
-    }, 8000);
+    const ticker = document.getElementById('lageTicker');
+    if (ticker) {
+      setInterval(() => {
+        idx = (idx + 1) % hints.length;
+        ticker.style.opacity = '0';
+        setTimeout(() => { ticker.textContent = hints[idx]; ticker.style.opacity = '1'; }, 380);
+      }, 8000);
+    }
   }
 </script>
 </body>

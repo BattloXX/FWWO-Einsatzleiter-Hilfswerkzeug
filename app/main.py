@@ -18,6 +18,7 @@ from app.models.user import Role, User
 from app.routers import (
     api_v1,
     auth,
+    lagekarte_api,
     ui_admin,
     ui_archive,
     ui_breathing,
@@ -195,6 +196,20 @@ async def session_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# CORS für lagekarte.info GeoJSON-Endpoint
+try:
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_methods=["GET"],
+        allow_headers=["*"],
+        allow_credentials=False,
+        max_age=600,
+    )
+except Exception:
+    pass
+
 # Security headers middleware (Phase 7)
 try:
     from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -237,6 +252,7 @@ except ImportError:
 app.include_router(auth.router)
 app.include_router(ui_password_reset.router)
 app.include_router(api_v1.router)
+app.include_router(lagekarte_api.router)
 app.include_router(ws.router)
 app.include_router(ui_incident.router)
 app.include_router(ui_media.router)

@@ -80,7 +80,7 @@
           <td style="white-space:nowrap;">
             {% if dt.is_active %}
             <form method="post" action="/admin/geraete-login/{{ dt.id }}/widerrufen" style="display:inline;"
-                  onsubmit="return confirm('Token für „{{ dt.label }}" widerrufen? Das Gerät kann sich dann nicht mehr anmelden.')">
+                  data-label="{{ dt.label }}" onsubmit="return confirmRevoke(this)">
               <button class="btn btn--ghost btn--sm" {{ tip('Anmeldung sofort sperren') }}>Widerrufen</button>
             </form>
             {% else %}
@@ -134,11 +134,13 @@
         <label class="form-label">Rollen</label>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
           {% for role in roles %}
+          {% if role.code != 'system_admin' or is_sysadmin %}
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
             <input type="checkbox" name="role_codes" value="{{ role.code }}">
             <span>{{ role.label }}</span>
             <small class="text-muted" style="font-family:monospace;">({{ role.code }})</small>
           </label>
+          {% endif %}
           {% endfor %}
         </div>
       </div>
@@ -171,6 +173,10 @@ function copyDeviceUrl() {
     const btn = el.nextElementSibling;
     if (btn) { btn.textContent = '✓ Kopiert'; setTimeout(() => { btn.textContent = '📋 Kopieren'; }, 2000); }
   });
+}
+function confirmRevoke(form) {
+  const label = form.dataset.label || '';
+  return confirm('Token für „' + label + '" widerrufen? Das Gerät kann sich dann nicht mehr anmelden.');
 }
 </script>
 {% endblock %}

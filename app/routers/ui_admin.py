@@ -1895,7 +1895,10 @@ async def device_tokens_list(
     from sqlalchemy.orm import joinedload
     user = request.state.user
     tokens = (
-        db.query(DeviceToken)
+        _org_filter(
+            db.query(DeviceToken).join(User, DeviceToken.user_id == User.id),
+            user, User.org_id,
+        )
         .options(joinedload(DeviceToken.user))
         .order_by(DeviceToken.created_at.desc())
         .all()
@@ -1909,11 +1912,11 @@ async def device_tokens_list(
         "roles": roles,
         "all_orgs": all_orgs,
         "is_sysadmin": has_role(user, "system_admin"),
-        "new_token": request.query_params.get("new_token"),
-        "new_label": request.query_params.get("new_label"),
         "saved": request.query_params.get("saved"),
         "error": request.query_params.get("error"),
         "base_url": base_url,
+        "new_token": None,
+        "new_label": None,
     })
 
 
@@ -1936,6 +1939,15 @@ async def create_device_token(
         org_id if has_role(current_user, "system_admin") and org_id and org_id != 0
         else current_user.org_id
     )
+
+    # Rollen: system_admin darf nur system_admin vergeben
+    is_sysadmin = has_role(current_user, "system_admin")
+    allowed_codes = (
+        {r.code for r in db.query(Role).all()}
+        if is_sysadmin
+        else {r.code for r in db.query(Role).all() if r.code != "system_admin"}
+    )
+    role_codes = [c for c in role_codes if c in allowed_codes]
 
     # Eindeutigen Username generieren
     raw_token = _secrets.token_urlsafe(32)
@@ -1967,11 +1979,42 @@ async def create_device_token(
                 payload={"label": label, "role_codes": role_codes})
     db.commit()
 
-    from urllib.parse import quote
-    return RedirectResponse(
-        f"/admin/geraete-login?saved=1&new_token={raw_token}&new_label={quote(label)}",
-        status_code=303,
+    # Token einmalig direkt in der Response zeigen — nie in URL/Logs
+    from sqlalchemy.orm import joinedload as _jl
+    all_tokens = (
+        _org_filter(
+            db.query(DeviceToken).join(User, DeviceToken.user_id == User.id),
+            current_user, User.org_id,
+        )
+        .options(_jl(DeviceToken.user))
+        .order_by(DeviceToken.created_at.desc())
+        .all()
     )
+    roles_all = db.query(Role).all()
+    all_orgs = db.query(FireDept).order_by(FireDept.name).all() if has_role(current_user, "system_admin") else []
+    base_url = str(request.base_url).rstrip("/")
+    return templates.TemplateResponse(request, "admin/device_tokens.html", {
+        "user": current_user,
+        "tokens": all_tokens,
+        "roles": roles_all,
+        "all_orgs": all_orgs,
+        "is_sysadmin": has_role(current_user, "system_admin"),
+        "saved": "1",
+        "error": None,
+        "base_url": base_url,
+        "new_token": raw_token,
+        "new_label": label,
+    })
+
+
+def _assert_device_token_access(dt: DeviceToken | None, current_user) -> None:
+    """Raises 404 if not found, 403 if cross-org access by non-sysadmin."""
+    if not dt:
+        raise HTTPException(404)
+    if not has_role(current_user, "system_admin"):
+        owner_org = dt.user.org_id if dt.user else None
+        if owner_org != current_user.org_id:
+            raise HTTPException(404)  # 404 statt 403 – keine ID-Enumeration
 
 
 @router.post("/geraete-login/{token_id}/widerrufen")
@@ -1982,14 +2025,14 @@ async def revoke_device_token(
     _=Depends(require_role("admin")),
 ):
     dt = db.get(DeviceToken, token_id)
-    if dt:
-        dt.revoked_at = datetime.now(UTC)
-        if dt.user:
-            dt.user.active = False
-        write_audit(db, "admin.device_token.revoked", user_id=request.state.user.id,
-                    entity_type="device_token", entity_id=token_id,
-                    payload={"label": dt.label})
-        db.commit()
+    _assert_device_token_access(dt, request.state.user)
+    dt.revoked_at = datetime.now(UTC)
+    if dt.user:
+        dt.user.active = False
+    write_audit(db, "admin.device_token.revoked", user_id=request.state.user.id,
+                entity_type="device_token", entity_id=token_id,
+                payload={"label": dt.label})
+    db.commit()
     return RedirectResponse("/admin/geraete-login?saved=1", status_code=303)
 
 
@@ -2001,12 +2044,12 @@ async def reactivate_device_token(
     _=Depends(require_role("admin")),
 ):
     dt = db.get(DeviceToken, token_id)
-    if dt:
-        dt.revoked_at = None
-        if dt.user:
-            dt.user.active = True
-        write_audit(db, "admin.device_token.reactivated", user_id=request.state.user.id,
-                    entity_type="device_token", entity_id=token_id,
-                    payload={"label": dt.label})
-        db.commit()
+    _assert_device_token_access(dt, request.state.user)
+    dt.revoked_at = None
+    if dt.user:
+        dt.user.active = True
+    write_audit(db, "admin.device_token.reactivated", user_id=request.state.user.id,
+                entity_type="device_token", entity_id=token_id,
+                payload={"label": dt.label})
+    db.commit()
     return RedirectResponse("/admin/geraete-login?saved=1", status_code=303)

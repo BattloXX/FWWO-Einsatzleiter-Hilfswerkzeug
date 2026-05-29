@@ -107,6 +107,7 @@ class IncidentColumn(Base):
     title: Mapped[str] = mapped_column(String(150), nullable=False)
     is_fixed: Mapped[bool] = mapped_column(Boolean, default=False)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
+    card_order: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     incident: Mapped[Incident] = relationship(back_populates="columns")
     vehicles: Mapped[list[IncidentVehicle]] = relationship(back_populates="column")

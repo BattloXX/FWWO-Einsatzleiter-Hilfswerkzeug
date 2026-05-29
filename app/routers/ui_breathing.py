@@ -35,7 +35,8 @@ async def breathing_board(incident_id: int, request: Request, db: Session = Depe
         from fastapi import HTTPException
         raise HTTPException(404)
     db.refresh(incident, ["breathing_troops", "vehicles"])
-    members = db.query(Member).filter(Member.active == True).order_by(Member.lastname).all()  # noqa: E712
+    all_members = db.query(Member).filter(Member.active == True).order_by(Member.lastname).all()  # noqa: E712
+    members = [m for m in all_members if m.is_agt]
     vehicles = [v for v in incident.vehicles if not v.removed_at]
 
     troops_with_warnings = [

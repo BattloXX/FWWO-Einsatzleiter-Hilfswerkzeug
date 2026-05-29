@@ -583,6 +583,14 @@ def set_message_status(
     return message
 
 
+def update_column_card_order(db: Session, column_id: int, zone_order_json: str) -> None:
+    """Speichert die vollständige Karten-Reihenfolge einer Spalte (JSON-Array)."""
+    col = db.get(IncidentColumn, column_id)
+    if col:
+        col.card_order = zone_order_json
+        db.flush()
+
+
 def move_card(
     db: Session,
     incident_id: int,

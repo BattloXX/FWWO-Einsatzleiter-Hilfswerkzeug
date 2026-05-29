@@ -47,6 +47,40 @@
 .member-druck-press--warn   { color:#ed8936; }
 .member-druck-press--danger { color:#e53e3e; }
 
+/* ── Ack buttons ─────────────────────────────────────────────────────────── */
+.btn--ack {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:4px 10px; font-size:.78rem; font-weight:700;
+  border-radius:5px; cursor:pointer; border:1px solid currentColor;
+  background:rgba(0,0,0,.35); color:#fff;
+  transition:background .15s, opacity .15s;
+  white-space:nowrap;
+}
+.btn--ack:hover:not(:disabled) { background:rgba(0,0,0,.55); }
+.btn--ack:disabled { opacity:.5; cursor:default; }
+
+/* ── Neuer-Trupp-Modal: Formular-Layout ─────────────────────────────────── */
+.new-troop-fields {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  align-items:end;
+}
+.new-troop-fields .form-group { margin:0; }
+.new-troop-fields .form-group label { display:block; font-size:.75rem; color:var(--color-text-muted); margin-bottom:3px; }
+.new-troop-fields .form-group--full { grid-column:1 / -1; }
+
+/* ── Trupp-Mitglied-Zeilen im Modal ─────────────────────────────────────── */
+.troop-member-row {
+  display:grid;
+  grid-template-columns: minmax(0,1.6fr) minmax(0,1.4fr) 50px auto auto;
+  gap:6px;
+  align-items:center;
+  padding:5px 0;
+  border-bottom:1px solid rgba(255,255,255,.05);
+}
+.troop-member-row:last-child { border-bottom:none; }
+
 /* ── Meldungen ───────────────────────────────────────────────────────────── */
 .troop-meldungen { margin-top:8px; border-top:1px solid var(--color-border,#444); padding-top:6px; }
 .troop-meldungen__label { font-size:.65rem; color:var(--color-text-muted); text-transform:uppercase;
@@ -123,25 +157,26 @@
 
       {# Warn-Badges (Priorität: max_time > withdraw > one_third) #}
       {% if time_warning == 'max_exceeded' %}
-        <span class="warn-badge--max-time" id="warn-max-{{ troop.id }}">⚠ MAX-EINSATZZEIT
-          <form method="post" action="/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/ack" style="display:inline">
-            <input type="hidden" name="kind" value="max_time">
-            <button type="submit" class="btn btn--xs" style="margin-left:4px;padding:1px 6px;font-size:.7rem">✓ Quit.</button>
-          </form>
+        <span class="warn-badge--max-time" id="warn-max-{{ troop.id }}">
+          ⚠ MAX-EINSATZZEIT
+          <button type="button" class="btn--ack"
+                  onclick="ackWarning(this,'/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/ack','max_time','warn-max-{{ troop.id }}')">✓ Quittieren</button>
         </span>
       {% elif warning == 'red' %}
-        <span class="warn-badge--red" id="warn-withdraw-{{ troop.id }}">⚠ RÜCKZUGSDRUCK
-          <form method="post" action="/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/ack" style="display:inline">
-            <input type="hidden" name="kind" value="withdraw">
-            <button type="submit" class="btn btn--xs" style="margin-left:4px;padding:1px 6px;font-size:.7rem">✓ Quit.</button>
-          </form>
+        {% if troop.warn_withdraw_acked_at %}
+        <span class="warn-badge--one-third" id="warn-withdraw-{{ troop.id }}">⚠ RÜCKZUGSDRUCK (quittiert)</span>
+        {% else %}
+        <span class="warn-badge--red" id="warn-withdraw-{{ troop.id }}">
+          ⚠ RÜCKZUGSDRUCK
+          <button type="button" class="btn--ack"
+                  onclick="ackWarning(this,'/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/ack','withdraw','warn-withdraw-{{ troop.id }}')">✓ Quittieren</button>
         </span>
+        {% endif %}
       {% elif time_warning == 'one_third_due' %}
-        <span class="warn-badge--one-third" id="warn-third-{{ troop.id }}">⚠ Lagemeldung fällig (1/3)
-          <form method="post" action="/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/ack" style="display:inline">
-            <input type="hidden" name="kind" value="one_third">
-            <button type="submit" class="btn btn--xs" style="margin-left:4px;padding:1px 6px;font-size:.7rem">✓ Quit.</button>
-          </form>
+        <span class="warn-badge--one-third" id="warn-third-{{ troop.id }}">
+          ⚠ Lagemeldung fällig (1/3)
+          <button type="button" class="btn--ack"
+                  onclick="ackWarning(this,'/einsatz/{{ incident.id }}/atemschutz/{{ troop.id }}/ack','one_third','warn-third-{{ troop.id }}')">✓ Quittieren</button>
         </span>
       {% elif warning == 'yellow' %}
         <span class="troop-card__warn-badge warn-badge--yellow">⚠ 75%</span>
@@ -367,7 +402,7 @@
       </div>
       {% endif %}
 
-      <div class="form-row">
+      <div class="new-troop-fields">
         <div class="form-group">
           <label>Trupp-Bezeichnung</label>
           <input type="text" name="name" class="form-input" placeholder="Trupp 1" required>
@@ -393,11 +428,6 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-group" x-show="bottlePreset === 'manuell'">
-          <label>Einsatzzeit (Minuten, manuell)</label>
-          <input type="number" name="planned_duration_min" class="form-input" placeholder="z.B. 45" min="1" max="120"
-                 :required="bottlePreset === 'manuell'">
-        </div>
         {% if vehicles %}
         <div class="form-group">
           <label>Fahrzeug</label>
@@ -408,7 +438,14 @@
             {% endfor %}
           </select>
         </div>
+        {% else %}
+        <div></div>
         {% endif %}
+        <div class="form-group form-group--full" x-show="bottlePreset === 'manuell'">
+          <label>Einsatzzeit (Minuten, manuell)</label>
+          <input type="number" name="planned_duration_min" class="form-input" placeholder="z.B. 45" min="1" max="120"
+                 :required="bottlePreset === 'manuell'">
+        </div>
       </div>
 
       <p class="form-hint" style="margin-bottom:8px;">
@@ -487,6 +524,25 @@
 
 {% block scripts %}
 <script>
+/* ── Warn-Quittierung: stoppt Animation sofort, sendet POST, lädt Seite ── */
+async function ackWarning(btn, url, kind, badgeId) {
+  btn.disabled = true;
+  const badge = document.getElementById(badgeId);
+  if (badge) {
+    badge.style.animation = 'none';
+    badge.style.opacity = '0.45';
+  }
+  const troopEl = btn.closest('[id^="troop-"]');
+  const troopId = troopEl ? parseInt(troopEl.id.replace('troop-', ''), 10) : null;
+  if (troopId !== null) _stopLoopingWarning(kind, troopId);
+  try {
+    const fd = new FormData();
+    fd.append('kind', kind);
+    await fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' });
+  } catch (_) {}
+  location.reload();
+}
+
 /* ── Audio unlock (Browser-Autoplay-Policy) ── */
 let _audioUnlocked = false;
 function unlockAudio() {

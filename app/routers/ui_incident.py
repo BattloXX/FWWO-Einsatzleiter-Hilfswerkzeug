@@ -59,6 +59,7 @@ from app.services.incident_service import (
     set_message_status,
     set_task_status,
     set_unit_status,
+    update_column_card_order,
     update_task,
 )
 
@@ -1503,6 +1504,7 @@ async def move_card_endpoint(
     column_id: int | None = Form(None),
     position: int = Form(0),
     vehicle_id: int | None = Form(None),
+    zone_order: str | None = Form(None),
     db: Session = Depends(get_db),
     _=Depends(require_role("incident_leader", "admin")),
 ):
@@ -1512,6 +1514,13 @@ async def move_card_endpoint(
         vehicle_id=vehicle_id,
         user_id=request.state.user.id,
     )
+    if zone_order and column_id:
+        import json as _json
+        try:
+            _json.loads(zone_order)
+            update_column_card_order(db, column_id, zone_order)
+        except Exception:
+            pass
     db.commit()
     await manager.broadcast(incident_id, {"type": "card_moved", "reload_board": True})
     return Response(status_code=204)

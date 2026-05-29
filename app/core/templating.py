@@ -9,6 +9,8 @@ Die Zeitzonen-Filter lesen das User-Objekt aus dem Jinja-Kontext (immer als
 der jeweiligen Org-Zeitzone. Faellt auf settings.DEFAULT_TIMEZONE zurueck,
 wenn weder User noch Org-Zeitzone bekannt sind.
 """
+import json as _json
+
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 
@@ -106,6 +108,70 @@ templates.env.filters["local_iso"] = _local_iso
 templates.env.filters["action_label"] = _action_label
 templates.env.filters["unit_status_slug"] = _unit_status_slug
 templates.env.filters["person_status_label"] = _person_status_label
+
+def _ordered_col_items(col, vehicles, tasks, messages, persons):
+    """Gibt geordnete Liste von (kind, obj)-Tupeln zurück.
+    Respektiert col.card_order wenn vorhanden, sonst: Fahrzeuge → Aufträge → Meldungen → Personen.
+    Items, die in card_order stehen aber nicht mehr in der Spalte sind (verschoben/gelöscht),
+    werden übersprungen. Neue Items (nicht in card_order) werden am Ende angehängt.
+    """
+    def _default():
+        result = [('vehicle', v) for v in vehicles]
+        result += [('task', t) for t in tasks]
+        result += [('message', m) for m in messages]
+        result += [('person', p) for p in persons]
+        return result
+
+    if not col.card_order:
+        return _default()
+
+    try:
+        order = _json.loads(col.card_order)
+    except Exception:
+        return _default()
+
+    v_map = {v.id: v for v in vehicles}
+    t_map = {t.id: t for t in tasks}
+    m_map = {m.id: m for m in messages}
+    p_map = {p.id: p for p in persons}
+
+    result = []
+    seen_v, seen_t, seen_m, seen_p = set(), set(), set(), set()
+
+    for item in order:
+        kind = item.get('kind')
+        uid = item.get('id')
+        if kind == 'vehicle' and uid in v_map:
+            result.append(('vehicle', v_map[uid]))
+            seen_v.add(uid)
+        elif kind == 'task' and uid in t_map:
+            result.append(('task', t_map[uid]))
+            seen_t.add(uid)
+        elif kind == 'message' and uid in m_map:
+            result.append(('message', m_map[uid]))
+            seen_m.add(uid)
+        elif kind == 'person' and uid in p_map:
+            result.append(('person', p_map[uid]))
+            seen_p.add(uid)
+
+    # Neue Items (noch nicht in card_order) am Ende
+    for v in vehicles:
+        if v.id not in seen_v:
+            result.append(('vehicle', v))
+    for t in tasks:
+        if t.id not in seen_t:
+            result.append(('task', t))
+    for m in messages:
+        if m.id not in seen_m:
+            result.append(('message', m))
+    for p in persons:
+        if p.id not in seen_p:
+            result.append(('person', p))
+
+    return result
+
+
+templates.env.globals["ordered_col_items"] = _ordered_col_items
 
 # Lagekarte.info URL-Hilfsfunktion für Templates
 from app.services.lagekarte import resolve_lagekarte_url  # noqa: E402

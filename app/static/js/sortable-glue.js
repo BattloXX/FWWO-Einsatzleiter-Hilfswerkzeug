@@ -135,10 +135,16 @@
           return;
         }
 
-        // Drop auf Spalten-Zone
+        // Drop auf Spalten-Zone — auch vollständige Zone-Reihenfolge mitsenden
         const toColumnId = toZone.closest('[data-col-id]')?.dataset.colId;
         if (!toColumnId) return;
-        postMove(incidentId, { kind, uid, column_id: toColumnId, position });
+
+        // Alle Karten in der Ziel-Zone in aktueller DOM-Reihenfolge sammeln
+        const zoneCards = Array.from(toZone.querySelectorAll('[data-kind][data-uid]'));
+        const zoneOrder = JSON.stringify(
+          zoneCards.map(c => ({ kind: c.dataset.kind, id: parseInt(c.dataset.uid, 10) }))
+        );
+        postMove(incidentId, { kind, uid, column_id: toColumnId, position, zone_order: zoneOrder });
       } catch (err) {
         console.warn('[sortable-glue] onEnd-Fehler:', err);
       }

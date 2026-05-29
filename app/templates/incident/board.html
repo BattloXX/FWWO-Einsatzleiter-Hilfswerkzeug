@@ -271,23 +271,13 @@
       {% include "incident/_lane_header.html" %}
       <div class="kanban-col__body sortable-zone" id="zone-{{ col.id }}">
 
-        {% for vehicle in col_vehicles %}
-        {% include "incident/_vehicle_card.html" %}
+        {% for _kind, _item in ordered_col_items(col, col_vehicles, col_tasks, col_messages, col_persons) %}
+          {% if _kind == 'vehicle' %}{% set vehicle = _item %}{% include "incident/_vehicle_card.html" %}
+          {% elif _kind == 'task' %}{% set task = _item %}{% include "incident/_task_card.html" %}
+          {% elif _kind == 'message' %}{% set msg = _item %}{% include "incident/_message_card.html" %}
+          {% elif _kind == 'person' %}{% set person = _item %}{% include "incident/_person_card.html" %}
+          {% endif %}
         {% endfor %}
-
-        {% for task in col_tasks %}
-        {% include "incident/_task_card.html" %}
-        {% endfor %}
-
-        {% for msg in col_messages %}
-        {% include "incident/_message_card.html" %}
-        {% endfor %}
-
-        {% if col.code == 'rescued' %}
-        {% for person in col_persons %}
-        {% include "incident/_person_card.html" %}
-        {% endfor %}
-        {% endif %}
 
       </div>
     </div>

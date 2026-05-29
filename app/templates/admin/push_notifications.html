@@ -1,0 +1,290 @@
+{% extends "admin/_layout.html" %}
+{% from "_tooltip.html" import tip %}
+{% from "admin/_breadcrumb.html" import breadcrumb %}
+{% block title %}Push-Nachrichten – Admin{% endblock %}
+{% block admin_breadcrumb %}{{ breadcrumb([{'label': 'Push-Nachrichten'}]) }}{% endblock %}
+
+{% block admin_content %}
+<div class="page-content">
+  <div class="page-header">
+    <div>
+      <h1>Push-Nachrichten</h1>
+      <p class="page-header__sub">Abonnements verwalten und Nachrichten manuell senden.</p>
+    </div>
+  </div>
+
+  {% if sent is not none %}
+  <div class="alert alert--success">
+    {{ sent }} Push-Nachricht{{ 'en' if sent|int != 1 else '' }} erfolgreich zugestellt.
+  </div>
+  {% endif %}
+  {% if error == 'empty' %}
+  <div class="alert alert--danger">Titel und Text dürfen nicht leer sein.</div>
+  {% endif %}
+
+  {% if not push_enabled %}
+  <div class="alert alert--danger" style="margin-bottom:20px;">
+    Push-Nachrichten sind nicht aktiviert oder VAPID-Schlüssel fehlen.
+    Bitte unter <a href="/admin/system-einstellungen">System-Einstellungen</a> konfigurieren.
+  </div>
+  {% endif %}
+
+  <!-- ── Abonnement dieses Geräts ────────────────────────────────── -->
+  <div class="admin-section-title">Push-Abonnement dieses Geräts</div>
+  <div class="chart-box" style="margin-bottom:24px;">
+    <div id="pushStatusArea" style="min-height:36px;">
+      <span class="text-muted">Prüfe Status…</span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;">
+
+    <!-- ── Nachricht verfassen ── -->
+    <div class="chart-box">
+      <h3 style="margin-bottom:16px;">Nachricht verfassen</h3>
+      <form method="post" action="/admin/push-nachrichten/senden" id="pushForm">
+        <div class="form-group">
+          <label class="form-label">Titel <span style="color:var(--color-danger)">*</span></label>
+          <input type="text" name="title" class="form-input" required maxlength="100"
+                 placeholder="z.B. Übung morgen Abend"
+                 {{ tip('Wird als Benachrichtigungstitel angezeigt') }}>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Text <span style="color:var(--color-danger)">*</span></label>
+          <textarea name="body" class="form-input" required maxlength="300" rows="3"
+                    placeholder="z.B. Donnerstag 19:00 Uhr, Anwesenheit erbeten."
+                    style="resize:vertical;"
+                    {{ tip('Nachrichteninhalt, max. 300 Zeichen') }}></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">URL beim Tippen öffnen</label>
+          <input type="text" name="url" class="form-input" value="/"
+                 placeholder="/"
+                 {{ tip('Relativer Pfad der beim Tippen auf die Benachrichtigung geöffnet wird') }}>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Empfänger</label>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="radio" name="target" value="all" checked onchange="toggleUserSelect()">
+              Alle Abonnenten
+              <span class="badge-pill badge-pill--gray" style="font-size:.75rem;">
+                {{ sub_count }} Gerät{{ 'e' if sub_count != 1 else '' }}
+              </span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="radio" name="target" value="user" onchange="toggleUserSelect()"
+                     {% if not users_with_subs %}disabled{% endif %}>
+              Einzelner Benutzer
+            </label>
+            <select name="user_id" id="userSelect" class="form-input" disabled
+                    style="margin-left:20px;max-width:280px;">
+              {% for u in users_with_subs %}
+              <option value="{{ u.id }}">{{ u.display_name or u.username }}</option>
+              {% endfor %}
+              {% if not users_with_subs %}
+              <option disabled>Keine Abonnenten vorhanden</option>
+              {% endif %}
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:20px;">
+          <button type="submit" class="btn btn--primary"
+                  {% if not push_enabled %}disabled{% endif %}
+                  {{ tip('Sendet sofort an alle ausgewählten Geräte') }}>
+            Jetzt senden
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ── Abonnenten-Übersicht ── -->
+    <div>
+      <div class="chart-box" style="margin-bottom:16px;">
+        <h3 style="margin-bottom:12px;">Aktive Abonnements</h3>
+        <div class="kpi-grid" style="padding:0;grid-template-columns:1fr 1fr;">
+          <div class="kpi-card" style="padding:16px 12px;">
+            <div class="kpi-card__value">{{ sub_count }}</div>
+            <div class="kpi-card__label">Geräte gesamt</div>
+          </div>
+          <div class="kpi-card" style="padding:16px 12px;">
+            <div class="kpi-card__value">{{ users_with_subs|length }}</div>
+            <div class="kpi-card__label">Benutzer</div>
+          </div>
+        </div>
+        {% if users_with_subs %}
+        <table class="table-admin" style="margin-top:12px;">
+          <thead>
+            <tr><th>Benutzer</th><th style="width:90px;text-align:right;">Geräte</th></tr>
+          </thead>
+          <tbody>
+            {% for u in users_with_subs %}
+            <tr>
+              <td>{{ u.display_name or u.username }}</td>
+              <td style="text-align:right;">{{ u.push_subscriptions|length }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted" style="margin-top:8px;">Noch keine aktiven Push-Abonnements.</p>
+        {% endif %}
+      </div>
+
+      <div class="chart-box">
+        <h3 style="margin-bottom:8px;">Hinweise</h3>
+        <ul style="margin:0;padding-left:18px;line-height:1.7;color:var(--color-text-muted);font-size:.9rem;">
+          <li>Benutzer müssen Push-Benachrichtigungen im Browser aktiviert haben.</li>
+          <li>Nachrichten werden an alle registrierten Geräte eines Benutzers gesendet.</li>
+          <li>Nicht erreichbare Geräte werden stillschweigend übersprungen.</li>
+          <li>Jeder Versand — manuell und vom System — wird protokolliert.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Protokoll ───────────────────────────────────────────────── -->
+  <div class="admin-section-title" style="margin-top:32px;">
+    Protokoll gesendeter Nachrichten
+    <small style="font-weight:400;color:var(--color-text-muted)">(letzte 30)</small>
+  </div>
+  {% if push_logs %}
+  <div style="overflow-x:auto;margin-bottom:24px;">
+    <table class="table-admin" style="min-width:600px;">
+      <thead>
+        <tr>
+          <th style="width:140px;">Zeitpunkt</th>
+          <th>Titel</th>
+          <th>Text</th>
+          <th style="width:130px;">Quelle</th>
+          <th style="width:90px;text-align:right;">Zugestellt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in push_logs %}
+        <tr>
+          <td style="white-space:nowrap;color:var(--color-text-muted);font-size:.85rem;">
+            {{ (entry.sent_at|local).strftime('%d.%m.%Y %H:%M') }}
+          </td>
+          <td><strong>{{ entry.title }}</strong></td>
+          <td style="color:var(--color-text-muted);font-size:.9rem;">
+            {{ entry.body[:80] }}{% if entry.body|length > 80 %}…{% endif %}
+          </td>
+          <td>
+            {% if entry.source == 'system' %}
+              <span class="badge-pill badge-pill--gray" style="font-size:.75rem;">System</span>
+            {% elif entry.source == 'admin_all' %}
+              <span class="badge-pill badge-pill--gray" style="font-size:.75rem;">Admin (Alle)</span>
+            {% elif entry.source == 'admin_user' %}
+              <span class="badge-pill badge-pill--gray" style="font-size:.75rem;">
+                Admin › {{ entry.target_user.display_name if entry.target_user else '–' }}
+              </span>
+            {% else %}
+              <span class="badge-pill badge-pill--gray" style="font-size:.75rem;">{{ entry.source }}</span>
+            {% endif %}
+          </td>
+          <td style="text-align:right;">
+            {{ entry.sent_count }}<span class="text-muted">/{{ entry.total_count }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted" style="margin-bottom:24px;">Noch keine gesendeten Nachrichten.</p>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleUserSelect() {
+  const radio = document.querySelector('input[name="target"][value="user"]');
+  const sel = document.getElementById('userSelect');
+  sel.disabled = !radio.checked;
+}
+
+/* ── Push-Abonnement Status ── */
+(async function () {
+  const area = document.getElementById('pushStatusArea');
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    area.innerHTML = '<span class="text-muted">Push wird von diesem Browser nicht unterstützt (kein Service-Worker oder PushManager).</span>';
+    return;
+  }
+  let swReg;
+  try { swReg = await navigator.serviceWorker.ready; } catch {
+    area.innerHTML = '<span class="text-muted">Service-Worker nicht bereit.</span>';
+    return;
+  }
+  const existing = await swReg.pushManager.getSubscription().catch(() => null);
+  const perm = Notification.permission;
+
+  if (existing) {
+    area.innerHTML =
+      '<span class="badge-pill badge-pill--green" style="font-size:.85rem;margin-right:8px;">✓ Aktiv</span>'
+      + 'Push-Benachrichtigungen sind für dieses Gerät aktiviert.'
+      + ' <button class="btn btn--ghost btn--xs" style="margin-left:8px;" onclick="unsubscribePush()">Abonnement aufheben</button>';
+  } else if (perm === 'denied') {
+    area.innerHTML =
+      '<span class="badge-pill badge-pill--red" style="font-size:.85rem;margin-right:8px;">Blockiert</span>'
+      + 'Benachrichtigungen sind im Browser blockiert. Bitte in den Browser-Einstellungen für diese Seite erlauben.';
+  } else {
+    area.innerHTML =
+      '<span class="badge-pill badge-pill--gray" style="font-size:.85rem;margin-right:8px;">Inaktiv</span>'
+      + 'Dieses Gerät empfängt keine Push-Nachrichten.'
+      + ' <button class="btn btn--primary btn--xs" style="margin-left:8px;" onclick="subscribePush()">Aktivieren</button>';
+  }
+})();
+
+async function subscribePush() {
+  const area = document.getElementById('pushStatusArea');
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') {
+    area.innerHTML = '<span class="text-muted">Benachrichtigungen wurden nicht erlaubt.</span>';
+    return;
+  }
+  try {
+    const { publicKey } = await fetch('/push/vapid-public-key').then(r => r.json());
+    if (!publicKey) throw new Error('VAPID-Schlüssel nicht konfiguriert');
+    const swReg = await navigator.serviceWorker.ready;
+    const sub = await swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+    const res = await fetch('/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sub),
+    });
+    if (!res.ok) throw new Error('Server-Fehler beim Speichern');
+    location.reload();
+  } catch (e) {
+    const errEl = document.createElement('span');
+    errEl.className = 'alert alert--danger';
+    errEl.style.display = 'inline-block';
+    errEl.textContent = 'Fehler beim Aktivieren: ' + e.message;
+    area.replaceChildren(errEl);
+  }
+}
+
+async function unsubscribePush() {
+  try {
+    const swReg = await navigator.serviceWorker.ready;
+    const sub = await swReg.pushManager.getSubscription();
+    if (sub) {
+      await fetch('/push/unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      });
+      await sub.unsubscribe();
+    }
+    location.reload();
+  } catch (e) {
+    alert('Fehler beim Deaktivieren: ' + e.message);
+  }
+}
+</script>
+{% endblock %}

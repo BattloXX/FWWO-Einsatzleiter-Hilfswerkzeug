@@ -119,3 +119,21 @@ class PushSubscription(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     user: Mapped[User] = relationship(back_populates="push_subscriptions")
+
+
+class PushLog(Base):
+    __tablename__ = "push_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    source: Mapped[str] = mapped_column(String(50), nullable=False, default="system")
+    target_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    sent_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    target_user: Mapped[User | None] = relationship("User", foreign_keys=[target_user_id])

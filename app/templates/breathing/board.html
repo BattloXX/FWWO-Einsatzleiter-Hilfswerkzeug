@@ -301,7 +301,7 @@
                 <button type="button"
                         class="press-btn {% if troop.withdraw_press_calc and val <= troop.withdraw_press_calc %}press-btn--danger{% elif troop.start_press_avg and val <= troop.start_press_avg * 0.75 %}press-btn--warn{% else %}press-btn--high{% endif %}"
                         :class="currentPress !== null && Math.floor(currentPress) == {{ val }} ? 'press-btn--selected' : ''"
-                        @click="currentPress = {{ val }}; $refs.pressVal.value = '{{ val }}'; $refs.druckForm.requestSubmit(); open = false; window.dispatchEvent(new CustomEvent('breathing-pressure', {detail:{troopId:{{ troop.id }}, lowestPressure:{{ val }}, memberId:memberId, pressure:{{ val }}}}))">
+                        @click="currentPress = {{ val }}; $refs.pressVal.value = '{{ val }}'; $refs.druckForm.requestSubmit(); open = false; window.dispatchEvent(new CustomEvent('breathing-pressure', {detail:{troopId:{{ troop.id }}, lowestPressure:{{ val }}, memberId:memberId, pressure:{{ val }}, local:true}}))">
                   {{ val }}
                 </button>
                 {% endfor %}
@@ -524,6 +524,10 @@
 
 {% block scripts %}
 <script>
+/* ── Programm-Reload: unterdrückt beforeunload-Dialog ─────────────── */
+var _breathingReload = false;
+function doBreathingReload() { _breathingReload = true; location.reload(); }
+
 /* ── Warn-Quittierung: stoppt Animation sofort, sendet POST, lädt Seite ── */
 async function ackWarning(btn, url, kind, badgeId) {
   btn.disabled = true;
@@ -540,7 +544,7 @@ async function ackWarning(btn, url, kind, badgeId) {
     fd.append('kind', kind);
     await fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' });
   } catch (_) {}
-  location.reload();
+  doBreathingReload();
 }
 
 /* ── Audio unlock (Browser-Autoplay-Policy) ── */
@@ -588,8 +592,7 @@ function _stopLoopingWarning(kind, troopId) {
 window.addEventListener('breathing-warning', (e) => {
   const { troopId, kind } = e.detail;
   _playWarning(kind, troopId);
-  // Seite neu laden um Badge anzuzeigen (einfachste Variante)
-  if (document.getElementById('troopsGrid')) location.reload();
+  if (document.getElementById('troopsGrid')) doBreathingReload();
 });
 
 window.addEventListener('breathing-warning-acked', (e) => {
@@ -687,7 +690,13 @@ function troopCard(currentPress, maxPress, withdrawPress, lastLogIso, entryIso, 
 
       window.addEventListener('breathing-pressure', (e) => {
         if (e.detail.troopId === troopId) {
-          this.currentPress = e.detail.lowestPressure;
+          if (e.detail.local) {
+            // Optimistisches Update: Druck kann nur sinken – nimm den niedrigsten Wert
+            this.currentPress = Math.min(this.currentPress, e.detail.pressure);
+          } else {
+            // WS-Event: Server liefert autoritativen Minimalwert
+            this.currentPress = e.detail.lowestPressure;
+          }
           this.lastLog = new Date();
           updateAgo();
         }
@@ -733,5 +742,103 @@ function newTroopForm() {
     },
   };
 }
+
+/* ── Atemschutz-Board: WebSocket + Sicherheitswarnungen ─────────────────── */
+(function () {
+  {% set ns_act = namespace(cnt=0) %}
+  {% for troop, _w, _tw in troops_with_warnings %}
+    {% if troop.status in ['im_einsatz', 'rueckzug'] %}{% set ns_act.cnt = ns_act.cnt + 1 %}{% endif %}
+  {% endfor %}
+  var HAS_ACTIVE = {{ 'true' if ns_act.cnt > 0 else 'false' }};
+
+  /* ── Warnung: Seite verlassen mit aktiven Trupps ── */
+  if (HAS_ACTIVE) {
+    window.addEventListener('beforeunload', function (e) {
+      if (_breathingReload) return;
+      e.preventDefault();
+      e.returnValue = 'Trupps im Einsatz – die Atemschutzüberwachung kann nicht sichergestellt werden, wenn diese Seite verlassen wird!';
+    });
+  }
+
+  /* ── Hinweis wenn Seite im Hintergrund war ── */
+  var _hiddenAt = null;
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      _hiddenAt = Date.now();
+      return;
+    }
+    var hiddenMs = _hiddenAt ? Date.now() - _hiddenAt : 0;
+    _hiddenAt = null;
+    if (hiddenMs > 30000) {
+      doBreathingReload(); return;
+    }
+    if (HAS_ACTIVE && hiddenMs > 5000) {
+      var sec = Math.round(hiddenMs / 1000);
+      var b = document.getElementById('breathing-hidden-banner');
+      if (b) b.remove();
+      b = document.createElement('div');
+      b.id = 'breathing-hidden-banner';
+      b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;'
+        + 'background:#7c1d1d;color:#fff;font-weight:600;font-size:.9rem;'
+        + 'display:flex;align-items:center;justify-content:space-between;'
+        + 'padding:10px 16px;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.4);';
+      b.innerHTML = '<span>⚠ Seite war ' + sec + ' Sek. nicht aktiv – Warnungen könnten verpasst worden sein!</span>'
+        + '<button onclick="document.getElementById(\'breathing-hidden-banner\').remove()"'
+        + ' style="background:rgba(255,255,255,.2);border:none;color:#fff;'
+        + 'padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:700;">✕</button>';
+      document.body.prepend(b);
+      setTimeout(function () { if (b && b.parentNode) b.remove(); }, 15000);
+    }
+  });
+
+  /* ── WebSocket für Echtzeit-Updates ── */
+  var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  var wsUrl = proto + '://' + location.host + '/ws/incident/{{ incident.id }}';
+  var lastAct = Date.now();
+  var firstConn = true;
+
+  function connectWS() {
+    var ws = new WebSocket(wsUrl);
+    ws.onopen = function () { firstConn = false; };
+    ws.onmessage = function (e) {
+      lastAct = Date.now();
+      if (e.data === 'pong') return;
+      var ev;
+      try { ev = JSON.parse(e.data); } catch (_) { return; }
+      if (ev.type === 'pressure_logged') {
+        window.dispatchEvent(new CustomEvent('breathing-pressure', { detail: {
+          troopId: ev.troop_id,
+          lowestPressure: ev.lowest_pressure != null ? ev.lowest_pressure : ev.pressure,
+          memberId: ev.member_id != null ? ev.member_id : null,
+          pressure: ev.pressure,
+        }}));
+      }
+      if (ev.type === 'troop_warning') {
+        window.dispatchEvent(new CustomEvent('breathing-warning', {
+          detail: { troopId: ev.troop_id, kind: ev.kind }
+        }));
+      }
+      if (ev.type === 'troop_warning_acked') {
+        window.dispatchEvent(new CustomEvent('breathing-warning-acked', {
+          detail: { troopId: ev.troop_id, kind: ev.kind }
+        }));
+      }
+      if (ev.reload_breathing || ev.type === 'troop_created' || ev.type === 'troop_started'
+          || ev.type === 'troop_status_changed' || ev.type === 'troop_meldung'
+          || ev.type === 'troop_standort') {
+        doBreathingReload();
+      }
+    };
+    ws.onclose = function () {
+      setTimeout(function () {
+        if (!firstConn && navigator.onLine) doBreathingReload();
+        else connectWS();
+      }, 3000);
+    };
+    setInterval(function () { if (ws.readyState === 1) ws.send('ping'); }, 30000);
+  }
+
+  connectWS();
+})();
 </script>
 {% endblock %}

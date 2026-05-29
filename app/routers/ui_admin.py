@@ -30,7 +30,7 @@ from app.models.master import (
     TaskSuggestionAlarm,
     VehicleMaster,
 )
-from app.models.user import ApiKey, AuditLog, Role, User, UserRole
+from app.models.user import ApiKey, AuditLog, PushLog, PushSubscription, Role, User, UserRole
 
 router = APIRouter(prefix="/admin")
 logger_admin = logging.getLogger("einsatzleiter.admin")
@@ -1817,3 +1817,68 @@ async def revoke_lagekarte_token(
                     entity_type="lagekarte_token", entity_id=token_id)
         db.commit()
     return RedirectResponse("/admin/lagekarte-tokens", status_code=303)
+
+
+# ── Push-Nachrichten ──────────────────────────────────────────────────────────
+
+@router.get("/push-nachrichten", response_class=HTMLResponse)
+async def push_notifications_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    _=Depends(require_role("admin")),
+):
+    user = request.state.user
+    from app.services.push_service import _push_cfg
+    from sqlalchemy.orm import joinedload
+    cfg = _push_cfg(db)
+    sub_count = db.query(PushSubscription).count()
+    users_with_subs = (
+        db.query(User)
+        .join(PushSubscription, PushSubscription.user_id == User.id)
+        .distinct()
+        .order_by(User.display_name)
+        .all()
+    )
+    push_logs = (
+        db.query(PushLog)
+        .options(joinedload(PushLog.target_user))
+        .order_by(PushLog.sent_at.desc())
+        .limit(30)
+        .all()
+    )
+    return templates.TemplateResponse(request, "admin/push_notifications.html", {
+        "user": user,
+        "sub_count": sub_count,
+        "users_with_subs": users_with_subs,
+        "push_enabled": cfg["enabled"] and bool(cfg["private_key"]) and bool(cfg["public_key"]),
+        "push_logs": push_logs,
+        "sent": request.query_params.get("sent"),
+        "error": request.query_params.get("error"),
+    })
+
+
+@router.post("/push-nachrichten/senden")
+async def send_push_notification(
+    request: Request,
+    title: str = Form(...),
+    body: str = Form(...),
+    url: str = Form("/"),
+    target: str = Form("all"),
+    user_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+    _=Depends(require_role("admin")),
+):
+    from app.services.push_service import notify_all, notify_user
+    title = title.strip()
+    body = body.strip()
+    url = url.strip() or "/"
+    if not title or not body:
+        return RedirectResponse("/admin/push-nachrichten?error=empty", status_code=303)
+    if target == "user" and user_id:
+        count = notify_user(db, user_id, title, body, url, source="admin_user")
+    else:
+        count = notify_all(db, title, body, url, source="admin_all")
+    write_audit(db, "admin.push.manual_send", user_id=request.state.user.id,
+                payload={"title": title, "target": target, "sent": count})
+    db.commit()
+    return RedirectResponse(f"/admin/push-nachrichten?sent={count}", status_code=303)

@@ -46,6 +46,20 @@ def _push_cfg(db: Session | None) -> dict[str, Any]:
     return cfg
 
 
+def _log_push(db: Session, title: str, body: str, url: str | None,
+              source: str, target_user_id: int | None,
+              sent_count: int, total_count: int) -> None:
+    try:
+        from app.models.user import PushLog
+        db.add(PushLog(
+            title=title, body=body, url=url, source=source,
+            target_user_id=target_user_id,
+            sent_count=sent_count, total_count=total_count,
+        ))
+    except Exception:
+        log.exception("Push-Log Eintrag fehlgeschlagen")
+
+
 def send_push(subscription: PushSubscription, title: str, body: str,
               url: str | None = None, db: Session | None = None) -> bool:
     cfg = _push_cfg(db)
@@ -69,19 +83,23 @@ def send_push(subscription: PushSubscription, title: str, body: str,
         return False
 
 
-def notify_all(db: Session, title: str, body: str, url: str | None = None) -> int:
+def notify_all(db: Session, title: str, body: str, url: str | None = None,
+               source: str = "system") -> int:
     cfg = _push_cfg(db)
     if not cfg["enabled"]:
         return 0
     subs = db.query(PushSubscription).all()
     count = sum(1 for s in subs if send_push(s, title, body, url, db=db))
+    _log_push(db, title, body, url, source, None, count, len(subs))
     return count
 
 
-def notify_user(db: Session, user_id: int, title: str, body: str, url: str | None = None) -> int:
+def notify_user(db: Session, user_id: int, title: str, body: str,
+                url: str | None = None, source: str = "system") -> int:
     cfg = _push_cfg(db)
     if not cfg["enabled"]:
         return 0
     subs = db.query(PushSubscription).filter(PushSubscription.user_id == user_id).all()
     count = sum(1 for s in subs if send_push(s, title, body, url, db=db))
+    _log_push(db, title, body, url, source, user_id, count, len(subs))
     return count

@@ -63,6 +63,11 @@
       </a>
 
       <div class="admin-nav__group">Verwaltung</div>
+      <a href="/admin/push-nachrichten"
+         class="admin-nav__item {% if '/admin/push-nachrichten' in request.url.path %}is-active{% endif %}"
+         {{ tip('Manuelle Push-Nachrichten an alle oder einzelne Benutzer') }}>
+        <span class="admin-nav__icon">📣</span>Push-Nachrichten
+      </a>
       <a href="/admin/benutzer"
          class="admin-nav__item {% if '/admin/benutzer' in request.url.path %}is-active{% endif %}"
          {{ tip('Login-Accounts, Rollen, Passwörter') }}>

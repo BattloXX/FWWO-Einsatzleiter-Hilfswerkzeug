@@ -85,8 +85,8 @@ def upgrade():
     # ── default_message_alarm ──────────────────────────────────────────────────
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS default_message_alarm (
-            id INT NOT NULL AUTO_INCREMENT,
-            default_message_id INT NOT NULL,
+            id BIGINT NOT NULL AUTO_INCREMENT,
+            default_message_id BIGINT NOT NULL,
             alarm_type_code VARCHAR(10) NOT NULL,
             display_order INT NOT NULL DEFAULT 0,
             due_after_sec INT NOT NULL DEFAULT 300,

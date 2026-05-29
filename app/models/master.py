@@ -185,7 +185,7 @@ class LageHint(Base):
 class DefaultMessage(Base):
     __tablename__ = "default_message"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     text: Mapped[str] = mapped_column(String(500), nullable=False)
 
     alarm_assignments: Mapped[list["DefaultMessageAlarm"]] = relationship(
@@ -196,9 +196,9 @@ class DefaultMessage(Base):
 class DefaultMessageAlarm(Base):
     __tablename__ = "default_message_alarm"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     default_message_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("default_message.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("default_message.id", ondelete="CASCADE"), nullable=False
     )
     alarm_type_code: Mapped[str] = mapped_column(
         String(10), ForeignKey("alarm_type.code", ondelete="CASCADE"), nullable=False

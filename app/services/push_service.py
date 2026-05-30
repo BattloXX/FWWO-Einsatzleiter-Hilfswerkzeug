@@ -23,19 +23,22 @@ log = logging.getLogger(__name__)
 _fcm_app: Any = None
 
 
-def _get_fcm_app():
+def _get_fcm_app(cfg: dict | None = None):
     """Gibt eine initialisierte firebase_admin.App zurück oder None wenn FCM nicht konfiguriert."""
     global _fcm_app
     if _fcm_app is not None:
         return _fcm_app
-    if not settings.FCM_ENABLED or not settings.FCM_PROJECT_ID or not settings.FCM_CREDENTIALS_PATH:
+    fcm_enabled = cfg.get("fcm_enabled", settings.FCM_ENABLED) if cfg else settings.FCM_ENABLED
+    fcm_project_id = cfg.get("fcm_project_id", settings.FCM_PROJECT_ID) if cfg else settings.FCM_PROJECT_ID
+    fcm_creds = cfg.get("fcm_credentials_path", settings.FCM_CREDENTIALS_PATH) if cfg else settings.FCM_CREDENTIALS_PATH
+    if not fcm_enabled or not fcm_project_id or not fcm_creds:
         return None
     try:
         import firebase_admin  # type: ignore
         from firebase_admin import credentials  # type: ignore
         if not firebase_admin._apps:
-            cred = credentials.Certificate(settings.FCM_CREDENTIALS_PATH)
-            _fcm_app = firebase_admin.initialize_app(cred, {"projectId": settings.FCM_PROJECT_ID})
+            cred = credentials.Certificate(fcm_creds)
+            _fcm_app = firebase_admin.initialize_app(cred, {"projectId": fcm_project_id})
         else:
             _fcm_app = firebase_admin.get_app()
         return _fcm_app
@@ -89,8 +92,18 @@ def _push_cfg(db: Session | None) -> dict[str, Any]:
             if (v := _get("vapid_email")) is not None:
                 email = v.removeprefix("mailto:")
                 cfg["claim_email"] = email
+            # FCM – DB hat Vorrang vor .env
+            cfg["fcm_enabled"] = (
+                _get("fcm_enabled") or ("true" if settings.FCM_ENABLED else "false")
+            ).lower() == "true"
+            cfg["fcm_project_id"] = _get("fcm_project_id") or settings.FCM_PROJECT_ID
+            cfg["fcm_credentials_path"] = _get("fcm_credentials_path") or settings.FCM_CREDENTIALS_PATH
         except Exception:
             log.exception("Fehler beim Laden der Push-Einstellungen aus der Datenbank")
+    else:
+        cfg["fcm_enabled"] = settings.FCM_ENABLED
+        cfg["fcm_project_id"] = settings.FCM_PROJECT_ID
+        cfg["fcm_credentials_path"] = settings.FCM_CREDENTIALS_PATH
     return cfg
 
 
@@ -132,9 +145,9 @@ def send_push(subscription: PushSubscription, title: str, body: str,
 
 
 def _notify_fcm_users(db: Session, user_ids: set[int], title: str, body: str,
-                      url: str | None) -> int:
+                      url: str | None, cfg: dict | None = None) -> int:
     """Sendet FCM an alle registrierten Tokens der angegebenen User-IDs."""
-    if not settings.FCM_ENABLED:
+    if _get_fcm_app(cfg) is None:
         return 0
     tokens = db.query(FcmToken).filter(FcmToken.user_id.in_(user_ids)).all() if user_ids else []
     return sum(1 for t in tokens if send_fcm(t, title, body, url))
@@ -152,7 +165,7 @@ def notify_all(db: Session, title: str, body: str, url: str | None = None,
         wp_count = 0
     # FCM
     all_user_ids = {s.user_id for s in db.query(PushSubscription.user_id).distinct()}
-    fcm_extra = _notify_fcm_users(db, all_user_ids, title, body, url)
+    fcm_extra = _notify_fcm_users(db, all_user_ids, title, body, url, cfg)
     return wp_count + fcm_extra
 
 
@@ -167,7 +180,7 @@ def notify_user(db: Session, user_id: int, title: str, body: str,
     else:
         wp_count = 0
     # FCM
-    fcm_extra = _notify_fcm_users(db, {user_id}, title, body, url)
+    fcm_extra = _notify_fcm_users(db, {user_id}, title, body, url, cfg)
     return wp_count + fcm_extra
 
 
@@ -196,5 +209,5 @@ def notify_vehicle(db: Session, vehicle_master_id: int, title: str, body: str,
     else:
         wp_count = 0
     # FCM
-    fcm_extra = _notify_fcm_users(db, user_ids, title, body, url)
+    fcm_extra = _notify_fcm_users(db, user_ids, title, body, url, cfg)
     return wp_count + fcm_extra

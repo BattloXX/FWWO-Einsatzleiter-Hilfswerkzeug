@@ -1438,8 +1438,10 @@ async def save_system_settings(
 ):
     form = await request.form()
     known_keys = [
-        # Web Push
+        # Web Push (VAPID)
         "vapid_public_key", "vapid_private_key", "vapid_email", "enable_push",
+        # FCM – Native Android Push
+        "fcm_enabled", "fcm_project_id", "fcm_credentials_path",
         # E-Mail (SMTP)
         "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from",
         "smtp_starttls", "smtp_timeout",

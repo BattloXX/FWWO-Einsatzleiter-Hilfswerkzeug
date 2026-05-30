@@ -137,6 +137,48 @@
       </div>
     </section>
 
+    {# ── FCM – Native Android Push ───────────────────────────────────────── #}
+    <section class="card mb-4">
+      <div class="card-header">
+        <h2>FCM – Native Android Push</h2>
+      </div>
+      <div class="card-body">
+        <p class="text-muted" style="font-size:.85rem;margin-bottom:12px;">
+          Firebase Cloud Messaging für die native Android-App (einsatzleiter.cloud).
+          Leer lassen = Wert aus Umgebungsvariable (<code>FCM_*</code>) verwenden.
+          Erfordert ein Firebase-Projekt und ein Service-Account-JSON auf dem Server.
+          Änderungen sind erst nach einem App-Neustart wirksam.
+        </p>
+        <table class="table-admin">
+          <thead><tr><th style="width:230px">Einstellung</th><th>Wert</th><th>Beschreibung</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>fcm_enabled</code></td>
+              <td>
+                <select name="k_fcm_enabled" class="form-input form-input--sm" style="width:130px">
+                  <option value="true" {% if settings.get('fcm_enabled','false') == 'true' %}selected{% endif %}>Aktiv (true)</option>
+                  <option value="false" {% if settings.get('fcm_enabled','false') != 'true' %}selected{% endif %}>Inaktiv (false)</option>
+                </select>
+              </td>
+              <td><small class="text-muted">FCM-Sendepfad für Android-App aktivieren</small></td>
+            </tr>
+            <tr>
+              <td><code>fcm_project_id</code></td>
+              <td><input type="text" name="k_fcm_project_id" class="form-input form-input--sm"
+                         value="{{ settings.get('fcm_project_id', '') }}" placeholder="mein-firebase-projekt-id" style="width:260px"></td>
+              <td><small class="text-muted">Firebase-Projekt-ID (aus Firebase-Konsole → Projekteinstellungen)</small></td>
+            </tr>
+            <tr>
+              <td><code>fcm_credentials_path</code></td>
+              <td><input type="text" name="k_fcm_credentials_path" class="form-input form-input--sm"
+                         value="{{ settings.get('fcm_credentials_path', '') }}" placeholder="/etc/einsatzleiter/fcm-service-account.json" style="width:340px"></td>
+              <td><small class="text-muted">Absoluter Pfad zum Service-Account-JSON auf dem Server</small></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     {# ── Einsatz-Auto-Schließen ──────────────────────────────────────────── #}
     <section class="card mb-4">
       <div class="card-header">
@@ -212,6 +254,7 @@
     {% set known_keys_list = [
       'smtp_host','smtp_port','smtp_user','smtp_password','smtp_from','smtp_starttls','smtp_timeout',
       'vapid_public_key','vapid_private_key','vapid_email','enable_push',
+      'fcm_enabled','fcm_project_id','fcm_credentials_path',
       'incident_autoclose_enabled','incident_autoclose_after_hours','incident_autoclose_grace_minutes',
       'enable_speech_input','default_session_max_age',
     ] %}

@@ -118,18 +118,27 @@
   }
 
   // ─── QR-Scanner ─────────────────────────────────────────────────────────────
+  // @capacitor-mlkit/barcode-scanning v7: scan() → { barcodes: [{rawValue, ...}] }
   async function scanQr(onResult) {
     if (!isCapacitor) {
-      // PWA-Fallback: nicht verfügbar
       console.warn('[ELNative] QR-Scanner nur in nativer App verfügbar');
       return;
     }
     try {
       const { BarcodeScanner } = window.Capacitor.Plugins;
-      if (!BarcodeScanner) return;
-      const result = await BarcodeScanner.scan();
-      if (result && result.content && typeof onResult === 'function') {
-        onResult(result.content);
+      if (!BarcodeScanner) {
+        console.warn('[ELNative] BarcodeScanner-Plugin nicht verfügbar');
+        return;
+      }
+      // Kamera-Berechtigung sicherstellen
+      const perm = await BarcodeScanner.requestPermissions();
+      if (perm.camera !== 'granted') {
+        console.warn('[ELNative] Kamera-Berechtigung nicht erteilt:', perm.camera);
+        return;
+      }
+      const { barcodes } = await BarcodeScanner.scan();
+      if (barcodes && barcodes.length > 0 && typeof onResult === 'function') {
+        onResult(barcodes[0].rawValue);
       }
     } catch (e) {
       console.warn('[ELNative] QR-Scanner Fehler:', e);

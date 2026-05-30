@@ -2065,6 +2065,26 @@ def _assert_device_token_access(dt: DeviceToken | None, current_user) -> None:
             raise HTTPException(404)  # 404 statt 403 – keine ID-Enumeration
 
 
+@router.post("/geraete-login/{token_id}/loeschen")
+async def delete_device_token(
+    token_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    _=Depends(require_role("admin")),
+):
+    dt = db.get(DeviceToken, token_id)
+    _assert_device_token_access(dt, request.state.user)
+    device_user = dt.user
+    write_audit(db, "admin.device_token.deleted", user_id=request.state.user.id,
+                entity_type="device_token", entity_id=token_id,
+                payload={"label": dt.label})
+    db.delete(dt)
+    if device_user and device_user.is_device:
+        db.delete(device_user)
+    db.commit()
+    return RedirectResponse("/admin/geraete-login?saved=1", status_code=303)
+
+
 @router.post("/geraete-login/{token_id}/widerrufen")
 async def revoke_device_token(
     token_id: int,

@@ -61,11 +61,17 @@
             document.getElementById('qr-status').textContent = 'Kamera wird geöffnet…';
             document.getElementById('qr-section').classList.remove('hidden');
             window.ELNative.scanQr(function(url) {
-              if (url && (url.includes('/geraet-login') || url.includes('/qr-login'))) {
-                window.location.href = url;
-              } else {
-                document.getElementById('qr-status').textContent = 'Ungültiger QR-Code. Bitte versuche es erneut.';
-              }
+              try {
+                var u = new URL(url, window.location.origin);
+                var allowed = ['/geraet-login', '/qr-login'];
+                if ((u.protocol === 'https:' || u.protocol === 'http:') &&
+                    u.origin === window.location.origin &&
+                    allowed.indexOf(u.pathname) !== -1) {
+                  window.location.href = u.toString();
+                  return;
+                }
+              } catch (_) {}
+              document.getElementById('qr-status').textContent = 'Ungültiger QR-Code. Bitte versuche es erneut.';
             });
           } else {
             document.getElementById('qr-section').classList.toggle('hidden');

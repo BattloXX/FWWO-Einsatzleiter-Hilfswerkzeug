@@ -121,6 +121,11 @@
               <button class="btn btn--ghost btn--sm" {{ tip('Token reaktivieren') }}>Reaktivieren</button>
             </form>
             {% endif %}
+            <form method="post" action="/admin/geraete-login/{{ dt.id }}/loeschen" style="display:inline;"
+                  data-label="{{ dt.label }}" onsubmit="return confirmDelete(this)">
+              <button class="btn btn--ghost btn--sm" style="color:var(--color-danger)"
+                      {{ tip('Gerät endgültig löschen') }}>Löschen</button>
+            </form>
           </td>
         </tr>
         {% endfor %}
@@ -224,6 +229,10 @@ function copyDeviceUrl() {
 function confirmRevoke(form) {
   const label = form.dataset.label || '';
   return confirm('Token für „' + label + '" widerrufen? Das Gerät kann sich dann nicht mehr anmelden.');
+}
+function confirmDelete(form) {
+  const label = form.dataset.label || '';
+  return confirm('Gerät „' + label + '" endgültig löschen? Dies kann nicht rückgängig gemacht werden.');
 }
 </script>
 {% endblock %}
